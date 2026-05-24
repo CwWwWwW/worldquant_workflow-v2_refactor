@@ -70,7 +70,7 @@
   "experiment_budget_high_quality_pass_threshold": 0.3,
   "experiment_budget_allow_governance_veto": true,
   "experiment_budget_fail_open_tracking_only": true,
-  "enable_offline_replay": true,
+  "enable_offline_replay": false,
   "enable_strategy_portfolio": true,
   "enable_champion_challenger": true,
   "enable_drift_monitor": false,
@@ -214,7 +214,7 @@
     ]
   },
   "_comment": "账号密码和 DeepSeek API Key 推荐用环境变量 WORLDQUANT_EMAIL/WORLDQUANT_PASSWORD/DEEPSEEK_API_KEY 注入。当前工作流不设置单模板最大迭代次数，会持续迭代直到成功收藏或被红线规则放弃。",
-  "enable_counterfactual_evaluation": true,
+  "enable_counterfactual_evaluation": false,
   "enable_support_checker": true,
   "enable_challenger_live_budget": false,
   "strategy_default_champion": "legacy_champion",
@@ -243,5 +243,15 @@
   "healthcheck_auto_repair": true,
   "healthcheck_force_legacy_on_critical_warning": true,
   "healthcheck_disable_broken_models": true,
-  "healthcheck_audit_path": "runtime/audit/healthcheck.jsonl"
+  "healthcheck_audit_path": "runtime/audit/healthcheck.jsonl",
+  "enable_decision_snapshots": true,
+  "decision_snapshot_status_path": "runtime/status/decision_snapshot_status.json",
+  "decision_snapshot_record_parent_selection": true,
+  "decision_snapshot_record_mutation_policy": true,
+  "decision_snapshot_record_sc_fallback": true,
+  "decision_snapshot_record_simulator_skip": true,
+  "decision_snapshot_record_experiment_arm_selection": true,
+  "decision_snapshot_record_budget_plan_selection": true,
+  "decision_snapshot_record_candidate_acceptance": true,
+  "decision_snapshot_fail_open": true
 }

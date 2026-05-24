@@ -130,8 +130,18 @@ EXPERIMENT_BUDGET_HIGH_SC_ABS_MAX_THRESHOLD = 0.70
 EXPERIMENT_BUDGET_HIGH_QUALITY_PASS_THRESHOLD = 0.30
 EXPERIMENT_BUDGET_ALLOW_GOVERNANCE_VETO = True
 EXPERIMENT_BUDGET_FAIL_OPEN_TRACKING_ONLY = True
-ENABLE_OFFLINE_REPLAY = True
-ENABLE_COUNTERFACTUAL_EVALUATION = True
+ENABLE_DECISION_SNAPSHOTS = True
+DECISION_SNAPSHOT_STATUS_PATH = "runtime/status/decision_snapshot_status.json"
+DECISION_SNAPSHOT_RECORD_PARENT_SELECTION = True
+DECISION_SNAPSHOT_RECORD_MUTATION_POLICY = True
+DECISION_SNAPSHOT_RECORD_SC_FALLBACK = True
+DECISION_SNAPSHOT_RECORD_SIMULATOR_SKIP = True
+DECISION_SNAPSHOT_RECORD_EXPERIMENT_ARM_SELECTION = True
+DECISION_SNAPSHOT_RECORD_BUDGET_PLAN_SELECTION = True
+DECISION_SNAPSHOT_RECORD_CANDIDATE_ACCEPTANCE = True
+DECISION_SNAPSHOT_FAIL_OPEN = True
+ENABLE_OFFLINE_REPLAY = False
+ENABLE_COUNTERFACTUAL_EVALUATION = False
 ENABLE_SUPPORT_CHECKER = True
 ENABLE_STRATEGY_PORTFOLIO = True
 ENABLE_CHAMPION_CHALLENGER = True
@@ -367,6 +377,26 @@ def load_config() -> WorkflowConfig:
             raw.get("experiment_budget_fail_open_tracking_only"),
             EXPERIMENT_BUDGET_FAIL_OPEN_TRACKING_ONLY,
         ),
+        enable_decision_snapshots=_as_bool(raw.get("enable_decision_snapshots"), ENABLE_DECISION_SNAPSHOTS),
+        decision_snapshot_status_path=str(raw.get("decision_snapshot_status_path") or DECISION_SNAPSHOT_STATUS_PATH),
+        decision_snapshot_record_parent_selection=_as_bool(
+            raw.get("decision_snapshot_record_parent_selection"), DECISION_SNAPSHOT_RECORD_PARENT_SELECTION
+        ),
+        decision_snapshot_record_mutation_policy=_as_bool(
+            raw.get("decision_snapshot_record_mutation_policy"), DECISION_SNAPSHOT_RECORD_MUTATION_POLICY
+        ),
+        decision_snapshot_record_sc_fallback=_as_bool(raw.get("decision_snapshot_record_sc_fallback"), DECISION_SNAPSHOT_RECORD_SC_FALLBACK),
+        decision_snapshot_record_simulator_skip=_as_bool(raw.get("decision_snapshot_record_simulator_skip"), DECISION_SNAPSHOT_RECORD_SIMULATOR_SKIP),
+        decision_snapshot_record_experiment_arm_selection=_as_bool(
+            raw.get("decision_snapshot_record_experiment_arm_selection"), DECISION_SNAPSHOT_RECORD_EXPERIMENT_ARM_SELECTION
+        ),
+        decision_snapshot_record_budget_plan_selection=_as_bool(
+            raw.get("decision_snapshot_record_budget_plan_selection"), DECISION_SNAPSHOT_RECORD_BUDGET_PLAN_SELECTION
+        ),
+        decision_snapshot_record_candidate_acceptance=_as_bool(
+            raw.get("decision_snapshot_record_candidate_acceptance"), DECISION_SNAPSHOT_RECORD_CANDIDATE_ACCEPTANCE
+        ),
+        decision_snapshot_fail_open=_as_bool(raw.get("decision_snapshot_fail_open"), DECISION_SNAPSHOT_FAIL_OPEN),
         enable_offline_replay=_as_bool(raw.get("enable_offline_replay"), ENABLE_OFFLINE_REPLAY),
         enable_counterfactual_evaluation=_as_bool(raw.get("enable_counterfactual_evaluation"), ENABLE_COUNTERFACTUAL_EVALUATION),
         enable_support_checker=_as_bool(raw.get("enable_support_checker"), ENABLE_SUPPORT_CHECKER),

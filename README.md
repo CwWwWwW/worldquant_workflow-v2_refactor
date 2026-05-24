@@ -92,3 +92,12 @@ This phase does **not** change alpha generation, reward semantics, CandidatePool
 Phase 4A adds experiment tracking tables and reports. Phase 4B adds advisory experiment planning and budgeting on top of those summaries. Budget plans protect `legacy_baseline` and `random_exploration`, cap treatment arms, down-weight high-failure/high-SC-risk arms, and up-weight positive-reward/high-quality arms. The budget layer writes SQLite snapshots and the `budgeting` section of `runtime/status/experiment_report.json`.
 
 This layer remains advisory: it does not hard-take over alpha generation, reward semantics, CandidatePool scoring, platform automation, WAIT_RESULT/PARSE_RESULT, SC collection, or the production legacy workflow. Offline Replay, Counterfactual Evaluation, Strategy Portfolio, Observability dashboard, Bayesian optimization, and complex multi-armed bandits are future phases, not Phase 4B.
+
+
+## Phase 5A Decision Snapshot
+
+Phase 5A adds a standardized Decision Snapshot layer under `wq_workflow/offline/`. It records structured snapshots for candidate acceptance, experiment arm selection, budget plan selection, and compatible legacy/shadow decision hooks, then writes true outcomes back by `alpha_id` after results are available.
+
+The status report is written to `runtime/status/decision_snapshot_status.json`. Recording is fail-open and does not change alpha generation, reward semantics, CandidatePool ranking, Governance veto behavior, Experiment Budget advisory behavior, platform automation, WAIT_RESULT/PARSE_RESULT, SC collection, or the production legacy workflow default path.
+
+This phase does **not** implement Replay Engine, Counterfactual Evaluation, off-policy evaluation, strategy promotion, or hard takeover. Those remain future phases.
