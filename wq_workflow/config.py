@@ -111,7 +111,25 @@ ENABLE_SIMULATOR_LEARNING = True
 ENABLE_SIMULATOR_MODEL_TRAINING = True
 ENABLE_SIMULATOR_MODEL_PREDICTION = True
 ENABLE_SIMULATOR_MODEL_SKIP = False
-ENABLE_EXPERIMENT_DESIGN = False
+ENABLE_EXPERIMENT_TRACKING = True
+ENABLE_EXPERIMENT_DESIGN = True
+ENABLE_EXPERIMENT_BUDGETING = True
+EXPERIMENT_STATUS_PATH = "runtime/status/experiment_report.json"
+DEFAULT_EXPERIMENT_ID = "default_experiment_v1"
+EXPERIMENT_ASSIGNMENT_MODE = "tracking_only"
+EXPERIMENT_BUDGET_MODE = "advisory"
+EXPERIMENT_BUDGET_TOTAL_HINT = 200
+EXPERIMENT_BUDGET_REFRESH_INTERVAL_ITERATIONS = 50
+EXPERIMENT_BUDGET_REFRESH_INTERVAL_HOURS = 24
+EXPERIMENT_BUDGET_LEGACY_MIN_RATIO = 0.15
+EXPERIMENT_BUDGET_RANDOM_MIN_RATIO = 0.05
+EXPERIMENT_BUDGET_TREATMENT_MAX_RATIO = 0.40
+EXPERIMENT_BUDGET_MIN_SAMPLES_FOR_ADJUSTMENT = 30
+EXPERIMENT_BUDGET_HIGH_FAILURE_RATE_THRESHOLD = 0.70
+EXPERIMENT_BUDGET_HIGH_SC_ABS_MAX_THRESHOLD = 0.70
+EXPERIMENT_BUDGET_HIGH_QUALITY_PASS_THRESHOLD = 0.30
+EXPERIMENT_BUDGET_ALLOW_GOVERNANCE_VETO = True
+EXPERIMENT_BUDGET_FAIL_OPEN_TRACKING_ONLY = True
 ENABLE_OFFLINE_REPLAY = True
 ENABLE_COUNTERFACTUAL_EVALUATION = True
 ENABLE_SUPPORT_CHECKER = True
@@ -297,7 +315,58 @@ def load_config() -> WorkflowConfig:
         enable_simulator_model_training=_as_bool(raw.get("enable_simulator_model_training"), ENABLE_SIMULATOR_MODEL_TRAINING),
         enable_simulator_model_prediction=_as_bool(raw.get("enable_simulator_model_prediction"), ENABLE_SIMULATOR_MODEL_PREDICTION),
         enable_simulator_model_skip=_as_bool(raw.get("enable_simulator_model_skip"), ENABLE_SIMULATOR_MODEL_SKIP),
+        enable_experiment_tracking=_as_bool(raw.get("enable_experiment_tracking"), ENABLE_EXPERIMENT_TRACKING),
         enable_experiment_design=_as_bool(raw.get("enable_experiment_design"), ENABLE_EXPERIMENT_DESIGN),
+        enable_experiment_budgeting=_as_bool(raw.get("enable_experiment_budgeting"), ENABLE_EXPERIMENT_BUDGETING),
+        experiment_status_path=str(raw.get("experiment_status_path") or EXPERIMENT_STATUS_PATH),
+        default_experiment_id=str(raw.get("default_experiment_id") or DEFAULT_EXPERIMENT_ID),
+        experiment_assignment_mode=str(raw.get("experiment_assignment_mode") or EXPERIMENT_ASSIGNMENT_MODE),
+        experiment_budget_mode=str(raw.get("experiment_budget_mode") or EXPERIMENT_BUDGET_MODE),
+        experiment_budget_total_hint=max(0, _as_int(raw.get("experiment_budget_total_hint"), EXPERIMENT_BUDGET_TOTAL_HINT)),
+        experiment_budget_refresh_interval_iterations=max(
+            1,
+            _as_int(raw.get("experiment_budget_refresh_interval_iterations"), EXPERIMENT_BUDGET_REFRESH_INTERVAL_ITERATIONS),
+        ),
+        experiment_budget_refresh_interval_hours=max(
+            1,
+            _as_int(raw.get("experiment_budget_refresh_interval_hours"), EXPERIMENT_BUDGET_REFRESH_INTERVAL_HOURS),
+        ),
+        experiment_budget_legacy_min_ratio=max(
+            0.0,
+            min(1.0, _as_float(raw.get("experiment_budget_legacy_min_ratio"), EXPERIMENT_BUDGET_LEGACY_MIN_RATIO)),
+        ),
+        experiment_budget_random_min_ratio=max(
+            0.0,
+            min(1.0, _as_float(raw.get("experiment_budget_random_min_ratio"), EXPERIMENT_BUDGET_RANDOM_MIN_RATIO)),
+        ),
+        experiment_budget_treatment_max_ratio=max(
+            0.0,
+            min(1.0, _as_float(raw.get("experiment_budget_treatment_max_ratio"), EXPERIMENT_BUDGET_TREATMENT_MAX_RATIO)),
+        ),
+        experiment_budget_min_samples_for_adjustment=max(
+            1,
+            _as_int(raw.get("experiment_budget_min_samples_for_adjustment"), EXPERIMENT_BUDGET_MIN_SAMPLES_FOR_ADJUSTMENT),
+        ),
+        experiment_budget_high_failure_rate_threshold=max(
+            0.0,
+            min(1.0, _as_float(raw.get("experiment_budget_high_failure_rate_threshold"), EXPERIMENT_BUDGET_HIGH_FAILURE_RATE_THRESHOLD)),
+        ),
+        experiment_budget_high_sc_abs_max_threshold=max(
+            0.0,
+            min(1.0, _as_float(raw.get("experiment_budget_high_sc_abs_max_threshold"), EXPERIMENT_BUDGET_HIGH_SC_ABS_MAX_THRESHOLD)),
+        ),
+        experiment_budget_high_quality_pass_threshold=max(
+            0.0,
+            min(1.0, _as_float(raw.get("experiment_budget_high_quality_pass_threshold"), EXPERIMENT_BUDGET_HIGH_QUALITY_PASS_THRESHOLD)),
+        ),
+        experiment_budget_allow_governance_veto=_as_bool(
+            raw.get("experiment_budget_allow_governance_veto"),
+            EXPERIMENT_BUDGET_ALLOW_GOVERNANCE_VETO,
+        ),
+        experiment_budget_fail_open_tracking_only=_as_bool(
+            raw.get("experiment_budget_fail_open_tracking_only"),
+            EXPERIMENT_BUDGET_FAIL_OPEN_TRACKING_ONLY,
+        ),
         enable_offline_replay=_as_bool(raw.get("enable_offline_replay"), ENABLE_OFFLINE_REPLAY),
         enable_counterfactual_evaluation=_as_bool(raw.get("enable_counterfactual_evaluation"), ENABLE_COUNTERFACTUAL_EVALUATION),
         enable_support_checker=_as_bool(raw.get("enable_support_checker"), ENABLE_SUPPORT_CHECKER),

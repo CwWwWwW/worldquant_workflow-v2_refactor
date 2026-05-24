@@ -193,6 +193,122 @@ REFRACTOR_TABLE_DDL: tuple[str, ...] = (
     );
     """,
     """
+    CREATE TABLE IF NOT EXISTS experiment_plans (
+        experiment_id TEXT PRIMARY KEY,
+        name TEXT,
+        status TEXT,
+        hypothesis_json TEXT,
+        arms_json TEXT,
+        created_at TEXT,
+        updated_at TEXT,
+        raw_payload TEXT
+    );
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS experiment_assignments (
+        assignment_id TEXT PRIMARY KEY,
+        experiment_id TEXT,
+        arm_id TEXT,
+        alpha_id TEXT,
+        expression_hash TEXT,
+        template_name TEXT,
+        template_family TEXT,
+        operator_family TEXT,
+        mutation_type TEXT,
+        field_family TEXT,
+        behavior_family TEXT,
+        assigned_by TEXT,
+        created_at TEXT,
+        raw_payload TEXT
+    );
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS experiment_results (
+        result_id TEXT PRIMARY KEY,
+        assignment_id TEXT,
+        experiment_id TEXT,
+        arm_id TEXT,
+        alpha_id TEXT,
+        success INTEGER,
+        reward REAL,
+        sharpe REAL,
+        fitness REAL,
+        returns REAL,
+        turnover REAL,
+        drawdown REAL,
+        margin REAL,
+        platform_sc_status TEXT,
+        platform_sc_abs_max REAL,
+        quality_passed INTEGER,
+        failure_type TEXT,
+        created_at TEXT,
+        raw_payload TEXT
+    );
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS experiment_summaries (
+        summary_id TEXT PRIMARY KEY,
+        experiment_id TEXT,
+        arm_id TEXT,
+        sample_count INTEGER,
+        success_count INTEGER,
+        failure_count INTEGER,
+        avg_reward REAL,
+        avg_sharpe REAL,
+        avg_fitness REAL,
+        avg_platform_sc_abs_max REAL,
+        quality_pass_rate REAL,
+        updated_at TEXT,
+        raw_payload TEXT
+    );
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS experiment_budget_plans (
+        budget_plan_id TEXT PRIMARY KEY,
+        experiment_id TEXT,
+        status TEXT,
+        total_budget_hint INTEGER,
+        allocations_json TEXT,
+        generated_by TEXT,
+        created_at TEXT,
+        updated_at TEXT,
+        raw_payload TEXT
+    );
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS experiment_budget_allocations (
+        allocation_id TEXT PRIMARY KEY,
+        budget_plan_id TEXT,
+        experiment_id TEXT,
+        arm_id TEXT,
+        suggested_ratio REAL,
+        min_ratio REAL,
+        max_ratio REAL,
+        sample_count INTEGER,
+        success_count INTEGER,
+        failure_count INTEGER,
+        avg_reward REAL,
+        avg_platform_sc_abs_max REAL,
+        quality_pass_rate REAL,
+        reason_codes_json TEXT,
+        governance_allowed INTEGER,
+        status TEXT,
+        created_at TEXT,
+        raw_payload TEXT
+    );
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS experiment_budget_snapshots (
+        snapshot_id TEXT PRIMARY KEY,
+        budget_plan_id TEXT,
+        experiment_id TEXT,
+        total_budget_hint INTEGER,
+        allocations_json TEXT,
+        created_at TEXT,
+        raw_payload TEXT
+    );
+    """,
+    """
     CREATE TABLE IF NOT EXISTS insight_usage (
         usage_id TEXT PRIMARY KEY,
         insight_id TEXT,
@@ -356,6 +472,15 @@ REFRACTOR_INDEX_DDL: tuple[str, ...] = (
     "CREATE INDEX IF NOT EXISTS idx_strategy_decisions_strategy ON strategy_decisions(strategy_id, created_at);",
     "CREATE INDEX IF NOT EXISTS idx_offline_replay_reports_task ON offline_replay_reports(task_name, decision_type, created_at);",
     "CREATE INDEX IF NOT EXISTS idx_model_safety_reports_strategy ON model_safety_reports(strategy_id, created_at);",
+    "CREATE INDEX IF NOT EXISTS idx_experiment_assignments_alpha_id ON experiment_assignments(alpha_id);",
+    "CREATE INDEX IF NOT EXISTS idx_experiment_assignments_experiment_id ON experiment_assignments(experiment_id);",
+    "CREATE INDEX IF NOT EXISTS idx_experiment_results_experiment_id ON experiment_results(experiment_id);",
+    "CREATE INDEX IF NOT EXISTS idx_experiment_results_arm_id ON experiment_results(arm_id);",
+    "CREATE INDEX IF NOT EXISTS idx_experiment_budget_plans_experiment_id ON experiment_budget_plans(experiment_id);",
+    "CREATE INDEX IF NOT EXISTS idx_experiment_budget_allocations_plan_id ON experiment_budget_allocations(budget_plan_id);",
+    "CREATE INDEX IF NOT EXISTS idx_experiment_budget_allocations_experiment_id ON experiment_budget_allocations(experiment_id);",
+    "CREATE INDEX IF NOT EXISTS idx_experiment_budget_allocations_arm_id ON experiment_budget_allocations(arm_id);",
+    "CREATE INDEX IF NOT EXISTS idx_experiment_budget_snapshots_experiment_id ON experiment_budget_snapshots(experiment_id);",
 )
 
 COMPAT_COLUMNS: dict[str, dict[str, str]] = {
