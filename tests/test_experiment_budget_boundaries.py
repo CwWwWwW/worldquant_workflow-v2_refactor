@@ -17,18 +17,19 @@ def _imports(path: Path) -> set[str]:
     return found
 
 
-def test_experiment_layer_boundaries():
+def test_experiment_budget_boundaries():
     offenders = []
+    banned_imports = ("playwright", "wq_workflow.platform", "wq_workflow.browser_ops", "wq_workflow.candidate_pool")
     for path in ROOT.rglob("*.py"):
         if "__pycache__" in path.parts:
             continue
-        imports = _imports(path)
         text = path.read_text(encoding="utf-8-sig").lower()
-        for banned in ("playwright", "wq_workflow.platform", "wq_workflow.browser_ops", "wq_workflow.strategy.budget_allocator"):
+        imports = _imports(path)
+        for banned in banned_imports:
             if any(name == banned or name.startswith(banned + ".") for name in imports):
                 offenders.append((path.name, banned))
         assert "page." not in text
         assert "browser." not in text
+        assert "submit" not in text or path.name == "README.md"
         assert "hard_budget" not in text
-        assert "multiarmed" not in text.replace("multi-armed", "")
     assert not offenders

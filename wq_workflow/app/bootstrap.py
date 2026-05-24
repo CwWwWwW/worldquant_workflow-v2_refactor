@@ -122,6 +122,14 @@ def build_app_context(config_path: str | Path | None = None, config: Any | None 
         ctx.runtime_status["config_safety_gate"] = guard_result
     except Exception as exc:
         logger.warning("config safety gate skipped: %s", exc)
+    if getattr(ctx, "experiment_service", None) is not None:
+        try:
+            ctx.experiment_service.config = config
+            ctx.experiment_service.governance_service = governance_service
+            if getattr(config, "enable_experiment_budgeting", True) or getattr(config, "enable_experiment_design", True):
+                ctx.experiment_service.generate_budget_plan(total_budget_hint=getattr(config, "experiment_budget_total_hint", None))
+        except Exception as exc:
+            logger.warning("experiment budgeting startup skipped: %s", exc)
     audit_logger = PredictionAuditLogger(repository=repositories.ml, storage=storage, logger=logger)
     prediction_audit = PredictionAuditService(repository=repositories.ml, storage=storage, logger=logger)
     decision_logger = DecisionSnapshotLogger(repository=repositories.decision, storage=storage, logger=logger)

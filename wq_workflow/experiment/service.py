@@ -4,6 +4,7 @@ import hashlib
 from typing import Any
 
 from .assignment import make_assignment
+from .budget import ArmRecommendation, ExperimentBudgetAllocator, ExperimentBudgetPlan, snapshot_from_plan
 from .planner import DefaultExperimentPlanner, context_to_dict
 from .repository import ExperimentRepository
 from .reporter import ExperimentReporter
@@ -26,6 +27,7 @@ class ExperimentService:
         self.logger = logger
         self.enabled = bool(getattr(config, "enable_experiment_tracking", True))
         self.planner = planner or DefaultExperimentPlanner(config=config)
+        self.budget_allocator = ExperimentBudgetAllocator(config=config, logger=logger)
         self.repository = repository or ExperimentRepository(storage=storage, db_path=db_path, logger=logger)
         status_path = getattr(config, "experiment_status_path", "runtime/status/experiment_report.json")
         self.reporter = reporter or ExperimentReporter(repository=self.repository, status_path=status_path, logger=logger)
@@ -86,6 +88,12 @@ class ExperimentService:
             if plan is None:
                 return None
             arm = self.planner.infer_arm({**data, "experiment_id": plan.experiment_id})
+            recommendation = self.recommend_arm(data) if str(getattr(self.config, "experiment_assignment_mode", "tracking_only")) == "advisory_budget" else None
+            if recommendation is not None:
+                data["budget_plan_id"] = recommendation.raw_payload.get("budget_plan_id")
+                data["budget_suggested_ratio"] = recommendation.suggested_ratio
+                data["budget_reason_codes"] = list(recommendation.reason_codes)
+                data["budget_recommended_arm_id"] = recommendation.arm_id
             self._ensure_arm(plan, arm)
             assignment = make_assignment(plan.experiment_id, arm.arm_id, data, assigned_by=str(data.get("assigned_by") or "default_planner"))
             result = self.repository.save_assignment(assignment)
@@ -141,6 +149,72 @@ class ExperimentService:
             return result
         except Exception as exc:
             self._warn(f"record_result_failed: {exc}")
+            return None
+
+    def generate_budget_plan(self, experiment_id: str | None = None, total_budget_hint: int | None = None) -> ExperimentBudgetPlan | None:
+        if not self.enabled or not self.available:
+            return None
+        try:
+            plan_id = str(experiment_id or getattr(self.config, "default_experiment_id", self.planner.default_experiment_id) or self.planner.default_experiment_id)
+            if total_budget_hint is None:
+                try:
+                    total_budget_hint = int(getattr(self.config, "experiment_budget_total_hint", 200))
+                except (TypeError, ValueError):
+                    total_budget_hint = 200
+            summaries = self.repository.list_summaries(plan_id)
+            budget_plan = self.budget_allocator.build_budget_plan(
+                plan_id,
+                summaries,
+                total_budget_hint=total_budget_hint,
+                governance_service=getattr(self, "governance_service", None),
+            )
+            saved = self.repository.save_budget_plan(budget_plan)
+            if not saved.get("ok", False):
+                self._warn(str(saved.get("error") or "save_budget_plan_failed"))
+                return None
+            snapshot = snapshot_from_plan(budget_plan)
+            snapshot_saved = self.repository.save_budget_snapshot(snapshot)
+            if not snapshot_saved.get("ok", False):
+                self._warn(str(snapshot_saved.get("error") or "save_budget_snapshot_failed"))
+            self.update_report()
+            return budget_plan
+        except Exception as exc:
+            self._warn(f"generate_budget_plan_failed: {exc}")
+            return None
+
+    def get_current_budget_plan(self, experiment_id: str | None = None) -> ExperimentBudgetPlan | None:
+        try:
+            plan_id = str(experiment_id or getattr(self.config, "default_experiment_id", self.planner.default_experiment_id) or self.planner.default_experiment_id)
+            return self.repository.get_latest_budget_plan(plan_id)
+        except Exception as exc:
+            self._warn(f"get_current_budget_plan_failed: {exc}")
+            return None
+
+    def recommend_arm(self, candidate_context: Any | None = None) -> ArmRecommendation | None:
+        try:
+            data = context_to_dict(candidate_context)
+            experiment_id = str(data.get("experiment_id") or getattr(self.config, "default_experiment_id", self.planner.default_experiment_id) or self.planner.default_experiment_id)
+            plan = self.get_current_budget_plan(experiment_id)
+            if plan is None or not plan.allocations:
+                return None
+            eligible = [
+                allocation
+                for allocation in plan.allocations
+                if allocation.governance_allowed and allocation.status not in {"disabled", "governance_blocked"} and allocation.suggested_ratio > 0
+            ]
+            if not eligible:
+                return None
+            allocation = sorted(eligible, key=lambda item: item.suggested_ratio, reverse=True)[0]
+            return ArmRecommendation(
+                recommendation_id=f"arm_recommendation:{plan.budget_plan_id}:{allocation.arm_id}",
+                experiment_id=plan.experiment_id,
+                arm_id=allocation.arm_id,
+                suggested_ratio=allocation.suggested_ratio,
+                reason_codes=list(allocation.reason_codes),
+                raw_payload={"budget_plan_id": plan.budget_plan_id, "mode": "advisory"},
+            )
+        except Exception as exc:
+            self._warn(f"recommend_arm_failed: {exc}")
             return None
 
     def update_report(self) -> dict[str, Any]:

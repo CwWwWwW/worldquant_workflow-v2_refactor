@@ -9,6 +9,7 @@ from wq_workflow.data.json_utils import json_dumps_safe, json_loads_safe, safe_f
 from wq_workflow.data.migrations import initialize_refactor_tables
 from wq_workflow.storage.sqlite_store import connect_db
 
+from .budget import ExperimentBudgetPlan, ExperimentBudgetSnapshot
 from .schema import ExperimentAssignment, ExperimentPlan, ExperimentResult, ExperimentSummary, utc_now_iso
 
 
@@ -252,6 +253,133 @@ class ExperimentRepository:
             self._record_error(exc)
             return []
 
+    def save_budget_plan(self, plan: ExperimentBudgetPlan) -> dict[str, Any]:
+        return self._safe_write(lambda: self._save_budget_plan(plan), budget_plan_id=plan.budget_plan_id)
+
+    def _save_budget_plan(self, plan: ExperimentBudgetPlan) -> None:
+        data = plan.to_dict()
+        allocations = data.get("allocations") or []
+        with self.connection() as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO experiment_budget_plans
+                (budget_plan_id, experiment_id, status, total_budget_hint, allocations_json,
+                 generated_by, created_at, updated_at, raw_payload)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    plan.budget_plan_id,
+                    plan.experiment_id,
+                    plan.status,
+                    plan.total_budget_hint,
+                    json_dumps_safe(allocations),
+                    plan.generated_by,
+                    plan.created_at,
+                    plan.updated_at,
+                    json_dumps_safe(data.get("raw_payload") or {}),
+                ),
+            )
+            for allocation in plan.allocations:
+                alloc = allocation.to_dict()
+                conn.execute(
+                    """
+                    INSERT OR REPLACE INTO experiment_budget_allocations
+                    (allocation_id, budget_plan_id, experiment_id, arm_id, suggested_ratio, min_ratio,
+                     max_ratio, sample_count, success_count, failure_count, avg_reward,
+                     avg_platform_sc_abs_max, quality_pass_rate, reason_codes_json,
+                     governance_allowed, status, created_at, raw_payload)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        allocation.allocation_id,
+                        plan.budget_plan_id,
+                        allocation.experiment_id,
+                        allocation.arm_id,
+                        allocation.suggested_ratio,
+                        allocation.min_ratio,
+                        allocation.max_ratio,
+                        allocation.sample_count,
+                        allocation.success_count,
+                        allocation.failure_count,
+                        allocation.avg_reward,
+                        allocation.avg_platform_sc_abs_max,
+                        allocation.quality_pass_rate,
+                        json_dumps_safe(alloc.get("reason_codes") or []),
+                        _bool_to_int(allocation.governance_allowed),
+                        allocation.status,
+                        allocation.created_at,
+                        json_dumps_safe(alloc.get("raw_payload") or {}),
+                    ),
+                )
+            self._commit(conn)
+
+    def get_latest_budget_plan(self, experiment_id: str) -> ExperimentBudgetPlan | None:
+        try:
+            with self.connection() as conn:
+                row = conn.execute(
+                    "SELECT * FROM experiment_budget_plans WHERE experiment_id=? ORDER BY updated_at DESC, created_at DESC LIMIT 1",
+                    (experiment_id,),
+                ).fetchone()
+            return self._budget_plan_from_row(row)
+        except Exception as exc:
+            self._record_error(exc)
+            return None
+
+    def list_budget_plans(self, experiment_id: str | None = None, limit: int = 20) -> list[ExperimentBudgetPlan]:
+        try:
+            with self.connection() as conn:
+                if experiment_id:
+                    rows = conn.execute(
+                        "SELECT * FROM experiment_budget_plans WHERE experiment_id=? ORDER BY updated_at DESC, created_at DESC LIMIT ?",
+                        (experiment_id, max(1, int(limit))),
+                    ).fetchall()
+                else:
+                    rows = conn.execute(
+                        "SELECT * FROM experiment_budget_plans ORDER BY updated_at DESC, created_at DESC LIMIT ?",
+                        (max(1, int(limit)),),
+                    ).fetchall()
+            return [plan for plan in (self._budget_plan_from_row(row) for row in rows) if plan is not None]
+        except Exception as exc:
+            self._record_error(exc)
+            return []
+
+    def save_budget_snapshot(self, snapshot: ExperimentBudgetSnapshot) -> dict[str, Any]:
+        return self._safe_write(lambda: self._save_budget_snapshot(snapshot), snapshot_id=snapshot.snapshot_id)
+
+    def _save_budget_snapshot(self, snapshot: ExperimentBudgetSnapshot) -> None:
+        data = snapshot.to_dict()
+        with self.connection() as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO experiment_budget_snapshots
+                (snapshot_id, budget_plan_id, experiment_id, total_budget_hint,
+                 allocations_json, created_at, raw_payload)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    snapshot.snapshot_id,
+                    snapshot.budget_plan_id,
+                    snapshot.experiment_id,
+                    snapshot.total_budget_hint,
+                    json_dumps_safe(data.get("allocations_json") or []),
+                    snapshot.created_at,
+                    json_dumps_safe(data.get("raw_payload") or {}),
+                ),
+            )
+            self._commit(conn)
+
+    def list_budget_snapshots(self, experiment_id: str, limit: int = 20) -> list[ExperimentBudgetSnapshot]:
+        try:
+            with self.connection() as conn:
+                rows = conn.execute(
+                    "SELECT * FROM experiment_budget_snapshots WHERE experiment_id=? ORDER BY created_at DESC LIMIT ?",
+                    (experiment_id, max(1, int(limit))),
+                ).fetchall()
+            return [snapshot for snapshot in (self._budget_snapshot_from_row(row) for row in rows) if snapshot is not None]
+        except Exception as exc:
+            self._record_error(exc)
+            return []
+
     def _compute_summary(self, experiment_id: str, arm_id: str) -> ExperimentSummary:
         with self.connection() as conn:
             rows = conn.execute(
@@ -317,6 +445,40 @@ class ExperimentRepository:
         data = dict(row)
         data["raw_payload"] = json_loads_safe(data.get("raw_payload"), {})
         return ExperimentSummary.from_dict(data)
+
+    def _budget_plan_from_row(self, row: Any) -> ExperimentBudgetPlan | None:
+        if row is None or not hasattr(row, "keys"):
+            return None
+        data = dict(row)
+        return ExperimentBudgetPlan.from_dict(
+            {
+                "budget_plan_id": data.get("budget_plan_id"),
+                "experiment_id": data.get("experiment_id"),
+                "status": data.get("status"),
+                "total_budget_hint": data.get("total_budget_hint"),
+                "allocations": json_loads_safe(data.get("allocations_json"), []),
+                "created_at": data.get("created_at"),
+                "updated_at": data.get("updated_at"),
+                "generated_by": data.get("generated_by"),
+                "raw_payload": json_loads_safe(data.get("raw_payload"), {}),
+            }
+        )
+
+    def _budget_snapshot_from_row(self, row: Any) -> ExperimentBudgetSnapshot | None:
+        if row is None or not hasattr(row, "keys"):
+            return None
+        data = dict(row)
+        return ExperimentBudgetSnapshot.from_dict(
+            {
+                "snapshot_id": data.get("snapshot_id"),
+                "budget_plan_id": data.get("budget_plan_id"),
+                "experiment_id": data.get("experiment_id"),
+                "total_budget_hint": data.get("total_budget_hint"),
+                "allocations_json": json_loads_safe(data.get("allocations_json"), []),
+                "created_at": data.get("created_at"),
+                "raw_payload": json_loads_safe(data.get("raw_payload"), {}),
+            }
+        )
 
     def _safe_write(self, fn: Any, **data: Any) -> dict[str, Any]:
         try:

@@ -24,19 +24,43 @@ class ExperimentReporter:
     def build_report(self, *, warnings: list[str] | None = None) -> dict[str, Any]:
         active = []
         summaries = []
+        budgeting = {
+            "enabled": True,
+            "mode": "advisory",
+            "latest_budget_plan_id": None,
+            "total_budget_hint": None,
+            "allocations": [],
+            "warnings": [],
+        }
         if self.repository is not None:
             try:
-                active = [plan.to_dict() for plan in self.repository.get_active_plans()]
+                active_plans = self.repository.get_active_plans()
+                active = [plan.to_dict() for plan in active_plans]
             except Exception as exc:
+                active_plans = []
                 warnings = list(warnings or []) + [f"active_experiments_unavailable: {exc}"]
             try:
                 summaries = [_summary_payload(summary) for summary in self.repository.list_summaries()]
             except Exception as exc:
                 warnings = list(warnings or []) + [f"summaries_unavailable: {exc}"]
+            try:
+                latest_plan = None
+                for plan in active_plans:
+                    latest_plan = self.repository.get_latest_budget_plan(plan.experiment_id)
+                    if latest_plan is not None:
+                        break
+                if latest_plan is None and hasattr(self.repository, "list_budget_plans"):
+                    plans = self.repository.list_budget_plans(limit=1)
+                    latest_plan = plans[0] if plans else None
+                if latest_plan is not None:
+                    budgeting = _budgeting_payload(latest_plan)
+            except Exception as exc:
+                budgeting["warnings"] = [f"budgeting_unavailable: {exc}"]
         return {
             "updated_at": utc_now_iso(),
             "active_experiments": active,
             "summaries": summaries,
+            "budgeting": budgeting,
             "warnings": list(warnings or []),
         }
 
@@ -96,6 +120,37 @@ def _summary_payload(summary: Any) -> dict[str, Any]:
         "avg_fitness": data.get("avg_fitness"),
         "avg_platform_sc_abs_max": data.get("avg_platform_sc_abs_max"),
         "quality_pass_rate": data.get("quality_pass_rate"),
+    }
+
+
+def _budgeting_payload(plan: Any) -> dict[str, Any]:
+    data = plan.to_dict() if hasattr(plan, "to_dict") else (plan if isinstance(plan, dict) else {})
+    return {
+        "enabled": True,
+        "mode": "advisory",
+        "latest_budget_plan_id": data.get("budget_plan_id"),
+        "total_budget_hint": data.get("total_budget_hint"),
+        "allocations": [_allocation_payload(item) for item in (data.get("allocations") or [])],
+        "warnings": [],
+    }
+
+
+def _allocation_payload(allocation: Any) -> dict[str, Any]:
+    data = allocation.to_dict() if hasattr(allocation, "to_dict") else (allocation if isinstance(allocation, dict) else {})
+    return {
+        "experiment_id": data.get("experiment_id"),
+        "arm_id": data.get("arm_id"),
+        "suggested_ratio": data.get("suggested_ratio", 0.0),
+        "min_ratio": data.get("min_ratio", 0.0),
+        "max_ratio": data.get("max_ratio", 1.0),
+        "sample_count": data.get("sample_count", 0),
+        "success_count": data.get("success_count", 0),
+        "failure_count": data.get("failure_count", 0),
+        "avg_reward": data.get("avg_reward"),
+        "avg_platform_sc_abs_max": data.get("avg_platform_sc_abs_max"),
+        "quality_pass_rate": data.get("quality_pass_rate"),
+        "status": data.get("status"),
+        "reason_codes": list(data.get("reason_codes") or []),
     }
 
 
