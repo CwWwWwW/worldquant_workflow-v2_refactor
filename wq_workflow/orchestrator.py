@@ -80,7 +80,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-async def main(argv: list[str] | None = None) -> int:
+async def main(argv: list[str] | None = None, *, experiment_service: Any | None = None) -> int:
     args = parse_args(argv)
     ensure_runtime_files()
     setup_logging()
@@ -93,6 +93,19 @@ async def main(argv: list[str] | None = None) -> int:
         config.max_templates = 0
     if args.max_iterations is not None:
         config.max_iterations_per_template = args.max_iterations
+    if experiment_service is None and bool(getattr(config, "enable_experiment_tracking", True)):
+        try:
+            from .experiment.service import ExperimentService
+
+            experiment_service = ExperimentService(
+                config=config,
+                db_path=getattr(config, "storage_db_path", "runtime/db/workflow.db"),
+                logger=logging.getLogger("wq_workflow.experiment"),
+            )
+            experiment_service.startup_check()
+        except Exception:
+            logging.info("Experiment tracking unavailable; continuing legacy workflow", exc_info=True)
+            experiment_service = None
 
     ds = DeepSeekClient(config)
     templates = await split_and_store_templates(
@@ -122,7 +135,7 @@ async def main(argv: list[str] | None = None) -> int:
             await supervisor.close_session(bootstrap_session, persist_storage=True)
         for item in templates:
             try:
-                success = await process_one_template(supervisor, ds, config, item)
+                success = await process_one_template(supervisor, ds, config, item, experiment_service=experiment_service)
                 successes.append(success)
                 print_success(success)
             except TemplateFailedError as exc:
@@ -138,7 +151,32 @@ async def main(argv: list[str] | None = None) -> int:
         await supervisor.close()
 
 
-async def process_one_template(supervisor: BrowserSupervisor, ds: DeepSeekClient, config, item: TemplateItem) -> TemplateSuccess:
+def maybe_assign_experiment_candidate(experiment_service: Any | None, candidate_context: dict[str, Any]) -> Any | None:
+    if experiment_service is None:
+        return None
+    try:
+        return experiment_service.assign_candidate(candidate_context)
+    except Exception:
+        logging.info("Experiment assignment skipped", exc_info=True)
+        return None
+
+
+def maybe_record_experiment_result(experiment_service: Any | None, alpha_id: str, result_context: dict[str, Any]) -> Any | None:
+    if experiment_service is None:
+        return None
+    try:
+        result = experiment_service.record_result(alpha_id, result_context)
+        try:
+            experiment_service.update_report()
+        except Exception:
+            logging.info("Experiment report update skipped", exc_info=True)
+        return result
+    except Exception:
+        logging.info("Experiment result recording skipped", exc_info=True)
+        return None
+
+
+async def process_one_template(supervisor: BrowserSupervisor, ds: DeepSeekClient, config, item: TemplateItem, *, experiment_service: Any | None = None) -> TemplateSuccess:
     logging.info("开始处理模板：%s file=%s source=%s", item.index, item.path, item.source)
     code, raw = await ds.prepare_alpha(item.code)
     code = ensure_code(code, "DeepSeek 初始优化未返回可用代码")
@@ -341,9 +379,10 @@ async def process_one_template(supervisor: BrowserSupervisor, ds: DeepSeekClient
         is_pending_candidate = bool((pending_mutation or {}).get("is_pending_candidate", bool(pending_mutation)))
         if simulator_skip_disabled_for_template:
             candidate_source = "current_code" if not pending_mutation else candidate_source
+        alpha_id = f"{alpha_name}:{iteration}"
         skip_backtest, simulator_observation = evolution_orchestrator.before_backtest(
             {
-                "alpha_id": f"{alpha_name}:{iteration}",
+                "alpha_id": alpha_id,
                 "expression": code,
                 "metrics": {},
                 "parent_reward": float((pending_mutation or {}).get("parent_reward") or 0.0),
@@ -367,6 +406,19 @@ async def process_one_template(supervisor: BrowserSupervisor, ds: DeepSeekClient
                 logging.info("EVOLUTION_SIMULATOR_SKIP_LIMIT_REACHED alpha=%s limit=%s", alpha_name, consecutive_simulator_skips)
             continue
         consecutive_simulator_skips = 0
+        maybe_assign_experiment_candidate(
+            experiment_service,
+            {
+                "alpha_id": alpha_id,
+                "expression": code,
+                "template_name": item.path or item.source,
+                "template_family": item.source or item.path,
+                "mutation_type": str((pending_mutation or {}).get("mutation_type") or candidate_source),
+                "candidate_source": candidate_source,
+                "behavior_family": str((pending_mutation or {}).get("behavior_family") or ""),
+                "raw_pending_mutation": pending_mutation or {},
+            },
+        )
         result = await run_platform_backtest_attempt(
             supervisor,
             code=code,
@@ -440,6 +492,20 @@ async def process_one_template(supervisor: BrowserSupervisor, ds: DeepSeekClient
                 continue
             automation_retry_count = 0
             platform_error_key = normalize_error_key(result.error.text)
+            maybe_record_experiment_result(
+                experiment_service,
+                alpha_id,
+                {
+                    "success": False,
+                    "reward": -0.5,
+                    "metrics": result.metrics if isinstance(result.metrics, dict) else {},
+                    "quality_passed": False,
+                    "platform_sc": result.platform_sc if isinstance(result.platform_sc, dict) else {},
+                    "platform_sc_status": (result.platform_sc or {}).get("status") if isinstance(result.platform_sc, dict) else None,
+                    "failure_type": classify_failure(result.error.text),
+                    "failure_reason": result.error.text,
+                },
+            )
             if is_syntax_error_text(result.error.text):
                 syntax_error_count += 1
                 fail_if_syntax_exhausted(item, alpha_name, code, result.error.text, syntax_error_count, max_syntax_errors, result.screenshot)
@@ -617,7 +683,7 @@ async def process_one_template(supervisor: BrowserSupervisor, ds: DeepSeekClient
                 evolution_candidate_source = "current_code"
             evolution_orchestrator.after_backtest(
                 candidate={
-                    "alpha_id": f"{alpha_name}:{iteration}",
+                    "alpha_id": alpha_id,
                     "expression": code,
                     "metrics": result.metrics if isinstance(result.metrics, dict) else {},
                     "parent_ids": evolution_parent_ids,
@@ -646,6 +712,19 @@ async def process_one_template(supervisor: BrowserSupervisor, ds: DeepSeekClient
             )
         except Exception:
             logging.info("Evolution after_backtest call skipped", exc_info=True)
+        maybe_record_experiment_result(
+            experiment_service,
+            alpha_id,
+            {
+                "success": bool(quality.passed or result.template_success),
+                "reward": mutation_reward,
+                "metrics": result.metrics if isinstance(result.metrics, dict) else {},
+                "quality": quality.to_dict() if hasattr(quality, "to_dict") else {},
+                "quality_passed": bool(quality.passed),
+                "platform_sc": result.platform_sc if isinstance(result.platform_sc, dict) else {},
+                "failure_type": "" if bool(quality.passed or result.template_success) else "quality_failed",
+            },
+        )
         await maybe_distill_research_insights(insight_manager, ds, config)
         maybe_refresh_dashboard_snapshot(force=True)
         if pending_mutation:

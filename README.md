@@ -80,3 +80,9 @@ Production execution still defaults to the legacy official workflow path. Recomm
 Do not enable `enable_refactored_pipeline=true` for production unless all critical steps are no longer observe-only and the full regression suite passes.
 
 The Config Safety Gate / pipeline safety checks will force fallback to the legacy official workflow if critical observe-only steps are detected and `allow_observe_only_pipeline=false`.
+
+## Phase 4A Experiment Tracking
+
+Phase 4A adds experiment tracking only. Each alpha candidate can be tagged with an `experiment_id` / `arm_id`, and completed backtest metrics can be written to experiment result tables and summarized in `runtime/status/experiment_report.json`.
+
+This phase does **not** change alpha generation, reward semantics, CandidatePool scoring, WAIT_RESULT / PARSE_RESULT, platform automation, SC collection, or the legacy official workflow default path. Dynamic budgeting, Bayesian optimization, multi-armed bandits, offline replay, strategy portfolio changes, and dashboards are intentionally deferred to later phases.

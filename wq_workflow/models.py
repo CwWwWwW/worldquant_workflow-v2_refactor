@@ -68,7 +68,12 @@ class WorkflowConfig:
     enable_simulator_model_training: bool = True
     enable_simulator_model_prediction: bool = True
     enable_simulator_model_skip: bool = False
+    enable_experiment_tracking: bool = True
     enable_experiment_design: bool = False
+    enable_experiment_budgeting: bool = False
+    experiment_status_path: str = "runtime/status/experiment_report.json"
+    default_experiment_id: str = "default_experiment_v1"
+    experiment_assignment_mode: str = "tracking_only"
     enable_offline_replay: bool = True
     enable_counterfactual_evaluation: bool = True
     enable_support_checker: bool = True
