@@ -1,0 +1,12 @@
+{
+  "version": "1.1.6",
+  "data": {},
+  "injections": {
+    "lineage_score": {},
+    "family_weight": {},
+    "operator_credibility": {},
+    "global_reward_bias": 0.0,
+    "last_generation": 0,
+    "last_decay_generation": 0
+  }
+}

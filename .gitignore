@@ -1,0 +1,48 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Runtime data
+runtime/db/*.db
+runtime/db/*.sqlite
+runtime/db/*.sqlite3
+runtime/models/
+runtime/status/
+runtime/audit/
+runtime/tmp/
+runtime/cache/
+runtime/screenshots/
+runtime/failures/
+runtime/logs/
+
+# Logs
+logs/
+ui_logs/
+migration_logs/
+*.log
+
+# Local configs / secrets
+config.json
+cookies.json
+*.local.json
+
+# Temporary files
+*.tmp
+*.bak
+*.old
+*.disabled.json
+.DS_Store
+Thumbs.db
+
+# Build / release
+dist/
+build/
+release/
+*.zip
+*.7z
