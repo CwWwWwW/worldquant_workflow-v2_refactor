@@ -63,6 +63,7 @@ def build_app_context(config_path: str | Path | None = None, config: Any | None 
     from wq_workflow.strategy.promotion import PromotionPolicy
     from wq_workflow.strategy.registry import StrategyRegistry
     from wq_workflow.strategy.rollback import RollbackPolicy
+    from wq_workflow.strategy.service import StrategyService
     from wq_workflow.experiment.planner import ExperimentPlanner
     from wq_workflow.monitoring.drift_monitor import DriftMonitor
     from wq_workflow.learning.insight.feedback import InsightFeedbackRecorder
@@ -274,6 +275,23 @@ def build_app_context(config_path: str | Path | None = None, config: Any | None 
         "performance_tracker": performance_tracker,
         "safety_gate": safety_gate,
     })
+    if bool(getattr(config, "enable_strategy_registry", True)):
+        try:
+            strategy_service = StrategyService(
+                config=config,
+                storage=storage,
+                db_path=getattr(config, "storage_db_path", "runtime/db/workflow.db"),
+                logger=logger,
+            )
+            ctx.strategy_service = strategy_service
+            ctx.strategy_services["service"] = strategy_service
+            ctx.strategy_services["scoreboard_service"] = strategy_service
+            ctx.runtime_status["strategy_registry"] = strategy_service.startup_check()
+        except Exception as exc:
+            logger.warning("strategy registry initialization skipped: %s", exc)
+            ctx.runtime_status["strategy_registry"] = {"ok": bool(getattr(config, "strategy_fail_open", True)), "enabled": True, "fail_open": True, "error": str(exc)}
+    else:
+        ctx.runtime_status["strategy_registry"] = {"ok": True, "enabled": False}
     ctx.monitoring_services["drift_monitor"] = DriftMonitor(storage=storage, config=config, logger=logger)
     ctx.legacy_adapters["orchestrator"] = run_legacy_orchestrator
     if bool(getattr(config, "enable_startup_healthcheck", True)):

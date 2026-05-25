@@ -29,6 +29,8 @@ class StrategyPortfolio:
     def list_strategies(self) -> list[dict[str, Any]]:
         if self.registry is None:
             return [dict(self.legacy_champion)]
+        if hasattr(self.registry, "list_portfolio_strategies"):
+            return self.registry.list_portfolio_strategies()
         return self.registry.list_strategies()
 
     def select_strategy(self, task_name: str | None = None) -> dict[str, Any]:

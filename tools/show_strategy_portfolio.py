@@ -13,7 +13,7 @@ def main() -> int:
     registry = ctx.strategy_services.get("registry")
     allocator = ctx.strategy_services.get("budget_allocator")
     tracker = ctx.strategy_services.get("performance_tracker")
-    strategies = registry.list_strategies() if registry else []
+    strategies = registry.list_portfolio_strategies() if registry and hasattr(registry, "list_portfolio_strategies") else (registry.list_strategies() if registry else [])
     safety_repo = getattr(ctx.repositories, "replay", None)
     allocations = allocator.allocate(strategies) if allocator else {}
     rows = []

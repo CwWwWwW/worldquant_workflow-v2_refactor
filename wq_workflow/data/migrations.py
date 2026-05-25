@@ -441,6 +441,89 @@ REFRACTOR_TABLE_DDL: tuple[str, ...] = (
     );
     """,
     """
+    CREATE TABLE IF NOT EXISTS strategy_profiles (
+        strategy_id TEXT PRIMARY KEY,
+        strategy_type TEXT,
+        name TEXT,
+        description TEXT,
+        source TEXT,
+        enabled INTEGER,
+        advisory_only INTEGER,
+        created_at TEXT,
+        updated_at TEXT,
+        raw_payload TEXT
+    );
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS strategy_evidence (
+        evidence_id TEXT PRIMARY KEY,
+        strategy_id TEXT,
+        evidence_type TEXT,
+        sample_count INTEGER,
+        success_count INTEGER,
+        avg_reward REAL,
+        success_rate REAL,
+        avg_platform_sc_abs_max REAL,
+        quality_pass_rate REAL,
+        replay_confidence TEXT,
+        counterfactual_confidence TEXT,
+        governance_status TEXT,
+        risk_flags_json TEXT,
+        reason_codes_json TEXT,
+        created_at TEXT,
+        raw_payload TEXT
+    );
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS strategy_signals (
+        signal_id TEXT PRIMARY KEY,
+        strategy_id TEXT,
+        signal_type TEXT,
+        value_json TEXT,
+        weight REAL,
+        direction TEXT,
+        reason TEXT,
+        created_at TEXT,
+        raw_payload TEXT
+    );
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS strategy_scores (
+        strategy_id TEXT PRIMARY KEY,
+        strategy_type TEXT,
+        total_score REAL,
+        reward_score REAL,
+        success_score REAL,
+        sc_risk_score REAL,
+        quality_score REAL,
+        replay_score REAL,
+        counterfactual_score REAL,
+        governance_score REAL,
+        sample_size_score REAL,
+        confidence TEXT,
+        risk_level TEXT,
+        recommendation TEXT,
+        evidence_count INTEGER,
+        sample_count INTEGER,
+        updated_at TEXT,
+        reason_codes_json TEXT,
+        risk_flags_json TEXT,
+        raw_payload TEXT
+    );
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS strategy_scoreboards (
+        scoreboard_id TEXT PRIMARY KEY,
+        generated_at TEXT,
+        profiles_json TEXT,
+        scores_json TEXT,
+        signals_json TEXT,
+        evidence_summary_json TEXT,
+        warnings_json TEXT,
+        raw_payload TEXT
+    );
+    """,
+    """
     CREATE TABLE IF NOT EXISTS offline_replay_reports (
         report_id TEXT PRIMARY KEY,
         task_name TEXT,
@@ -659,6 +742,15 @@ REFRACTOR_INDEX_DDL: tuple[str, ...] = (
     "CREATE INDEX IF NOT EXISTS idx_strategy_registry_role ON strategy_registry(role, status, task_name);",
     "CREATE INDEX IF NOT EXISTS idx_strategy_allocations_strategy ON strategy_allocations(strategy_id, created_at);",
     "CREATE INDEX IF NOT EXISTS idx_strategy_decisions_strategy ON strategy_decisions(strategy_id, created_at);",
+    "CREATE INDEX IF NOT EXISTS idx_strategy_profiles_type ON strategy_profiles(strategy_type);",
+    "CREATE INDEX IF NOT EXISTS idx_strategy_profiles_source ON strategy_profiles(source);",
+    "CREATE INDEX IF NOT EXISTS idx_strategy_evidence_strategy_id ON strategy_evidence(strategy_id);",
+    "CREATE INDEX IF NOT EXISTS idx_strategy_evidence_type ON strategy_evidence(evidence_type);",
+    "CREATE INDEX IF NOT EXISTS idx_strategy_signals_strategy_id ON strategy_signals(strategy_id);",
+    "CREATE INDEX IF NOT EXISTS idx_strategy_signals_type ON strategy_signals(signal_type);",
+    "CREATE INDEX IF NOT EXISTS idx_strategy_scores_type ON strategy_scores(strategy_type);",
+    "CREATE INDEX IF NOT EXISTS idx_strategy_scores_recommendation ON strategy_scores(recommendation);",
+    "CREATE INDEX IF NOT EXISTS idx_strategy_scoreboards_generated_at ON strategy_scoreboards(generated_at);",
     "CREATE INDEX IF NOT EXISTS idx_offline_replay_reports_task ON offline_replay_reports(task_name, decision_type, created_at);",
     "CREATE INDEX IF NOT EXISTS idx_offline_replay_runs_status ON offline_replay_runs(status);",
     "CREATE INDEX IF NOT EXISTS idx_offline_replay_policy_decisions_run_id ON offline_replay_policy_decisions(replay_run_id);",

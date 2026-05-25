@@ -117,3 +117,9 @@ Phase 5C adds an advisory Counterfactual Evaluator under `wq_workflow/offline/`.
 All counterfactual estimates are marked `estimated_not_observed`. Evidence must come from records with real observed outcomes; insufficient support returns `insufficient_evidence`, and high-risk estimates are flagged rather than promoted. Defaults remain conservative: `enable_counterfactual_evaluation=false`, `counterfactual_auto_run=false`, and `counterfactual_mode=advisory`.
 
 This phase does **not** treat estimates as actual outcomes, overwrite `decision_outcomes`, overwrite replay observed outcomes, change reward semantics, change CandidatePool ranking, modify Governance hard-decision flags, promote strategies, perform hard takeover, run doubly robust/off-policy evaluation, train models, alter alpha generation, or change platform automation / WAIT_RESULT / PARSE_RESULT / SC collection.
+
+## Phase 6A Strategy Registry / Scoreboard
+
+Phase 6A adds an advisory-only Strategy Registry / Scoreboard layer under `wq_workflow/strategy/`. It registers legacy, random exploration, experiment budget, ML parent/mutation, replay-supported, counterfactual-supported, governance-safe, and manual/unknown strategy profiles, then reads Experiment / Replay / Counterfactual / Governance / ML evidence to produce conservative strategy scores and `runtime/status/strategy_scoreboard.json`.
+
+Recommendations are advisory only. This phase does **not** implement Champion/Challenger, Strategy Budget Allocator, hard takeover, strategy promotion, model training, automatic budget apply, reward changes, CandidatePool changes, platform automation changes, or Governance hard-decision flag changes. Counterfactual evidence remains estimated-not-observed and is never treated as an actual outcome.
