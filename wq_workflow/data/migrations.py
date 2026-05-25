@@ -645,6 +645,62 @@ REFRACTOR_TABLE_DDL: tuple[str, ...] = (
     );
     """,
     """
+    CREATE TABLE IF NOT EXISTS observability_metrics (
+        metric_id TEXT PRIMARY KEY,
+        source TEXT,
+        metric_name TEXT,
+        metric_type TEXT,
+        value_json TEXT,
+        unit TEXT,
+        timestamp TEXT,
+        tags_json TEXT,
+        raw_payload TEXT
+    );
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS observability_source_status (
+        source TEXT PRIMARY KEY,
+        available INTEGER,
+        status_path TEXT,
+        table_names_json TEXT,
+        last_updated_at TEXT,
+        is_stale INTEGER,
+        metric_count INTEGER,
+        warnings_json TEXT,
+        raw_payload TEXT
+    );
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS observability_snapshots (
+        snapshot_id TEXT PRIMARY KEY,
+        generated_at TEXT,
+        metrics_json TEXT,
+        source_statuses_json TEXT,
+        summary_json TEXT,
+        warnings_json TEXT,
+        raw_payload TEXT
+    );
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS observability_summaries (
+        summary_id TEXT PRIMARY KEY,
+        generated_at TEXT,
+        total_metrics INTEGER,
+        available_sources INTEGER,
+        stale_sources INTEGER,
+        warning_count INTEGER,
+        workflow_summary_json TEXT,
+        ml_summary_json TEXT,
+        governance_summary_json TEXT,
+        experiment_summary_json TEXT,
+        offline_summary_json TEXT,
+        strategy_summary_json TEXT,
+        system_summary_json TEXT,
+        warnings_json TEXT,
+        raw_payload TEXT
+    );
+    """,
+    """
     CREATE TABLE IF NOT EXISTS offline_replay_reports (
         report_id TEXT PRIMARY KEY,
         task_name TEXT,
@@ -885,6 +941,11 @@ REFRACTOR_INDEX_DDL: tuple[str, ...] = (
     "CREATE INDEX IF NOT EXISTS idx_strategy_budget_allocations_status ON strategy_budget_allocations(budget_status);",
     "CREATE INDEX IF NOT EXISTS idx_strategy_budget_plans_generated_at ON strategy_budget_plans(generated_at);",
     "CREATE INDEX IF NOT EXISTS idx_strategy_budget_reports_generated_at ON strategy_budget_reports(generated_at);",
+    "CREATE INDEX IF NOT EXISTS idx_observability_metrics_source ON observability_metrics(source);",
+    "CREATE INDEX IF NOT EXISTS idx_observability_metrics_name ON observability_metrics(metric_name);",
+    "CREATE INDEX IF NOT EXISTS idx_observability_metrics_timestamp ON observability_metrics(timestamp);",
+    "CREATE INDEX IF NOT EXISTS idx_observability_snapshots_generated_at ON observability_snapshots(generated_at);",
+    "CREATE INDEX IF NOT EXISTS idx_observability_summaries_generated_at ON observability_summaries(generated_at);",
     "CREATE INDEX IF NOT EXISTS idx_offline_replay_reports_task ON offline_replay_reports(task_name, decision_type, created_at);",
     "CREATE INDEX IF NOT EXISTS idx_offline_replay_runs_status ON offline_replay_runs(status);",
     "CREATE INDEX IF NOT EXISTS idx_offline_replay_policy_decisions_run_id ON offline_replay_policy_decisions(replay_run_id);",
@@ -1074,6 +1135,54 @@ COMPAT_COLUMNS: dict[str, dict[str, str]] = {
         "mode": "TEXT",
         "total_budget_hint": "INTEGER",
         "allocations_json": "TEXT",
+        "warnings_json": "TEXT",
+        "raw_payload": "TEXT",
+    },
+    "observability_metrics": {
+        "metric_id": "TEXT",
+        "source": "TEXT",
+        "metric_name": "TEXT",
+        "metric_type": "TEXT",
+        "value_json": "TEXT",
+        "unit": "TEXT",
+        "timestamp": "TEXT",
+        "tags_json": "TEXT",
+        "raw_payload": "TEXT",
+    },
+    "observability_source_status": {
+        "source": "TEXT",
+        "available": "INTEGER",
+        "status_path": "TEXT",
+        "table_names_json": "TEXT",
+        "last_updated_at": "TEXT",
+        "is_stale": "INTEGER",
+        "metric_count": "INTEGER",
+        "warnings_json": "TEXT",
+        "raw_payload": "TEXT",
+    },
+    "observability_snapshots": {
+        "snapshot_id": "TEXT",
+        "generated_at": "TEXT",
+        "metrics_json": "TEXT",
+        "source_statuses_json": "TEXT",
+        "summary_json": "TEXT",
+        "warnings_json": "TEXT",
+        "raw_payload": "TEXT",
+    },
+    "observability_summaries": {
+        "summary_id": "TEXT",
+        "generated_at": "TEXT",
+        "total_metrics": "INTEGER",
+        "available_sources": "INTEGER",
+        "stale_sources": "INTEGER",
+        "warning_count": "INTEGER",
+        "workflow_summary_json": "TEXT",
+        "ml_summary_json": "TEXT",
+        "governance_summary_json": "TEXT",
+        "experiment_summary_json": "TEXT",
+        "offline_summary_json": "TEXT",
+        "strategy_summary_json": "TEXT",
+        "system_summary_json": "TEXT",
         "warnings_json": "TEXT",
         "raw_payload": "TEXT",
     },

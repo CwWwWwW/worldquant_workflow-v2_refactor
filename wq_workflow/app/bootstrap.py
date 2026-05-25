@@ -327,6 +327,24 @@ def build_app_context(config_path: str | Path | None = None, config: Any | None 
     except Exception as exc:
         logger.warning("strategy budget initialization skipped: %s", exc)
         ctx.runtime_status["strategy_budget"] = {"ok": bool(getattr(config, "strategy_budget_fail_open", True)), "enabled": bool(getattr(config, "enable_strategy_budget_allocator", False)), "fail_open": True, "error": str(exc)}
+    try:
+        from wq_workflow.observability.service import ObservabilityService
+
+        observability_service = ObservabilityService(
+            config=config,
+            storage=storage,
+            db_path=getattr(config, "storage_db_path", "runtime/db/workflow.db"),
+            logger=logger,
+        )
+        ctx.observability_service = observability_service
+        ctx.observability_services["metrics"] = observability_service
+        if bool(getattr(config, "enable_observability_metrics", True)):
+            ctx.runtime_status["observability"] = observability_service.startup_check()
+        else:
+            ctx.runtime_status["observability"] = {"ok": True, "enabled": False, "mode": getattr(config, "observability_mode", "metrics_only")}
+    except Exception as exc:
+        logger.warning("observability metrics initialization skipped: %s", exc)
+        ctx.runtime_status["observability"] = {"ok": bool(getattr(config, "observability_fail_open", True)), "enabled": bool(getattr(config, "enable_observability_metrics", True)), "fail_open": True, "error": str(exc)}
     ctx.monitoring_services["drift_monitor"] = DriftMonitor(storage=storage, config=config, logger=logger)
     ctx.legacy_adapters["orchestrator"] = run_legacy_orchestrator
     if bool(getattr(config, "enable_startup_healthcheck", True)):

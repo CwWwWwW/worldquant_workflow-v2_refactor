@@ -28,8 +28,10 @@ class AppContext:
     strategy_service: Any = None
     strategy_portfolio_service: Any = None
     strategy_budget_service: Any = None
+    observability_service: Any = None
     experiment_services: dict[str, Any] = field(default_factory=dict)
     monitoring_services: dict[str, Any] = field(default_factory=dict)
+    observability_services: dict[str, Any] = field(default_factory=dict)
     legacy_adapters: dict[str, Any] = field(default_factory=dict)
     runtime_status: dict[str, Any] = field(default_factory=dict)
 

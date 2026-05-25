@@ -43,6 +43,11 @@ def run_startup_healthcheck(
     errors: list[str] = []
     auto_fixes: list[str] = []
     mode = "normal"
+    observability_status: dict[str, Any] = {
+        "enabled": bool(getattr(config, "enable_observability_metrics", True)),
+        "ready": False,
+        "mode": getattr(config, "observability_mode", "metrics_only"),
+    }
 
     def warn(message: str) -> None:
         warnings.append(message)
@@ -66,6 +71,22 @@ def run_startup_healthcheck(
             for table in ("ml_model_registry", "ml_prediction_audit", "ml_training_samples", "ml_model_events", "ml_online_evaluation"):
                 if table not in tables:
                     errors.append(f"missing_ml_table:{table}")
+            if bool(getattr(config, "enable_observability_metrics", True)):
+                missing_observability_tables: list[str] = []
+                for table in ("observability_metrics", "observability_source_status", "observability_snapshots", "observability_summaries"):
+                    if table not in tables:
+                        missing_observability_tables.append(table)
+                        warn(f"missing_observability_table:{table}")
+                status_path = _resolve_path(root_path, getattr(config, "observability_metrics_status_path", "runtime/status/observability_metrics.json"))
+                try:
+                    status_path.parent.mkdir(parents=True, exist_ok=True)
+                    auto_fixes.append("observability_status_path_ready")
+                    observability_status.update({"ready": not missing_observability_tables, "status_path": str(status_path)})
+                except Exception as exc:
+                    warn(f"observability_status_path_unavailable:{exc}")
+                    observability_status.update({"ready": False, "status_path": str(status_path), "error": str(exc)})
+            else:
+                observability_status["ready"] = True
         finally:
             conn.close()
     except Exception as exc:
@@ -144,7 +165,7 @@ def run_startup_healthcheck(
         except Exception as exc:
             warn(f"governance_startup_check_failed:{exc}")
 
-    result = {"ok": not errors, "mode": mode, "warnings": warnings, "errors": errors, "auto_fixes": auto_fixes}
+    result = {"ok": not errors, "mode": mode, "warnings": warnings, "errors": errors, "auto_fixes": auto_fixes, "observability": observability_status}
     try:
         audit_path = _resolve_path(root_path, getattr(config, "healthcheck_audit_path", "runtime/audit/healthcheck.jsonl"))
         _json_line(audit_path, {"timestamp": datetime.now().isoformat(timespec="seconds"), **result})
