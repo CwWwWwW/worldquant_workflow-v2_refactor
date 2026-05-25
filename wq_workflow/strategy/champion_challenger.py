@@ -3,6 +3,9 @@ from __future__ import annotations
 from typing import Any
 
 from wq_workflow.offline.report import load_latest_replay_report, save_model_safety_report
+from wq_workflow.strategy.portfolio_policy import ChampionChallengerPolicy
+from wq_workflow.strategy.portfolio_service import StrategyPortfolioService
+from wq_workflow.strategy.transition_rules import StrategyTransitionRule, StrategyTransitionRules
 
 
 class ModelSafetyGate:
@@ -75,3 +78,12 @@ class ModelSafetyGate:
             return any(str(e.get("severity", "")).lower() == "severe" for e in drift.list_recent_events(limit=20))
         except Exception:
             return False
+
+
+__all__ = [
+    "ChampionChallengerPolicy",
+    "ModelSafetyGate",
+    "StrategyPortfolioService",
+    "StrategyTransitionRule",
+    "StrategyTransitionRules",
+]

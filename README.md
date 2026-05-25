@@ -117,3 +117,25 @@ Phase 5C adds an advisory Counterfactual Evaluator under `wq_workflow/offline/`.
 All counterfactual estimates are marked `estimated_not_observed`. Evidence must come from records with real observed outcomes; insufficient support returns `insufficient_evidence`, and high-risk estimates are flagged rather than promoted. Defaults remain conservative: `enable_counterfactual_evaluation=false`, `counterfactual_auto_run=false`, and `counterfactual_mode=advisory`.
 
 This phase does **not** treat estimates as actual outcomes, overwrite `decision_outcomes`, overwrite replay observed outcomes, change reward semantics, change CandidatePool ranking, modify Governance hard-decision flags, promote strategies, perform hard takeover, run doubly robust/off-policy evaluation, train models, alter alpha generation, or change platform automation / WAIT_RESULT / PARSE_RESULT / SC collection.
+
+## Phase 6A Strategy Registry / Scoreboard
+
+Phase 6A adds an advisory-only Strategy Registry / Scoreboard layer under `wq_workflow/strategy/`. It registers legacy, random exploration, experiment budget, ML parent/mutation, replay-supported, counterfactual-supported, governance-safe, and manual/unknown strategy profiles, then reads Experiment / Replay / Counterfactual / Governance / ML evidence to produce conservative strategy scores and `runtime/status/strategy_scoreboard.json`.
+
+Recommendations are advisory only. This phase does **not** implement Champion/Challenger, Strategy Budget Allocator, hard takeover, strategy promotion, model training, automatic budget apply, reward changes, CandidatePool changes, platform automation changes, or Governance hard-decision flag changes. Counterfactual evidence remains estimated-not-observed and is never treated as an actual outcome.
+
+### Phase 6B: Champion / Challenger Strategy Portfolio
+
+Phase 6B introduces an advisory-only Strategy Portfolio layer. It reads Phase 6A strategy scores plus risk evidence and writes `runtime/status/strategy_portfolio_report.json` with conservative `disabled` / `shadow` / `challenger` / `limited_active` / `champion` state recommendations.
+
+The default champion is `legacy_baseline`. This phase does not perform strategy budget allocation, automatic budget apply, hard takeover, true champion replacement, promotion execution, rollback execution, model training, reward changes, CandidatePool changes, platform automation changes, or Governance hard-flag changes. Legacy portfolio/champion/budget modules remain available but isolated.
+
+## Phase 6C Strategy Budget Allocator
+
+Phase 6C adds an advisory-only Strategy Budget Allocator under `wq_workflow/strategy/`. It reads Phase 6B portfolio states and emits conservative budget recommendations to `runtime/status/strategy_budget_report.json`.
+
+The allocator is report-only: every allocation has `auto_apply_allowed=false`; `strategy_budget_auto_apply=false` and `strategy_budget_allocator_auto_apply=false` by default. It does not change real backtest submission logic, alpha generation, parent selection, mutation policy, reward semantics, CandidatePool ranking, platform automation, WAIT_RESULT/PARSE_RESULT, SC collection, or Governance hard-decision flags.
+
+Default policy keeps `legacy_baseline` at a minimum floor of `0.40` and `random_exploration` at a minimum floor of `0.05`. Disabled, governance-blocked, and blocked-risk strategies are reported with zero advisory budget. Shadow, challenger, and limited-active states receive observe/test/scale-limited caps; high-risk, high-SC-risk, and insufficient-evidence strategies are capped conservatively. Ratios are normalized for dashboard/Governance visibility only and are never applied to the workflow scheduler.
+
+Legacy `portfolio`, `champion_challenger`, `budget_allocator`, `promotion`, and `rollback` modules remain import-compatible and isolated. Promotion/rollback tools remain manual and are not called by Phase 6C. The refactored pipeline remains non-production-official by default until a later explicit phase.

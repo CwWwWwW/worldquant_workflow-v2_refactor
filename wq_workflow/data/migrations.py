@@ -441,6 +441,210 @@ REFRACTOR_TABLE_DDL: tuple[str, ...] = (
     );
     """,
     """
+    CREATE TABLE IF NOT EXISTS strategy_profiles (
+        strategy_id TEXT PRIMARY KEY,
+        strategy_type TEXT,
+        name TEXT,
+        description TEXT,
+        source TEXT,
+        enabled INTEGER,
+        advisory_only INTEGER,
+        created_at TEXT,
+        updated_at TEXT,
+        raw_payload TEXT
+    );
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS strategy_evidence (
+        evidence_id TEXT PRIMARY KEY,
+        strategy_id TEXT,
+        evidence_type TEXT,
+        sample_count INTEGER,
+        success_count INTEGER,
+        avg_reward REAL,
+        success_rate REAL,
+        avg_platform_sc_abs_max REAL,
+        quality_pass_rate REAL,
+        replay_confidence TEXT,
+        counterfactual_confidence TEXT,
+        governance_status TEXT,
+        risk_flags_json TEXT,
+        reason_codes_json TEXT,
+        created_at TEXT,
+        raw_payload TEXT
+    );
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS strategy_signals (
+        signal_id TEXT PRIMARY KEY,
+        strategy_id TEXT,
+        signal_type TEXT,
+        value_json TEXT,
+        weight REAL,
+        direction TEXT,
+        reason TEXT,
+        created_at TEXT,
+        raw_payload TEXT
+    );
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS strategy_scores (
+        strategy_id TEXT PRIMARY KEY,
+        strategy_type TEXT,
+        total_score REAL,
+        reward_score REAL,
+        success_score REAL,
+        sc_risk_score REAL,
+        quality_score REAL,
+        replay_score REAL,
+        counterfactual_score REAL,
+        governance_score REAL,
+        sample_size_score REAL,
+        confidence TEXT,
+        risk_level TEXT,
+        recommendation TEXT,
+        evidence_count INTEGER,
+        sample_count INTEGER,
+        updated_at TEXT,
+        reason_codes_json TEXT,
+        risk_flags_json TEXT,
+        raw_payload TEXT
+    );
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS strategy_scoreboards (
+        scoreboard_id TEXT PRIMARY KEY,
+        generated_at TEXT,
+        profiles_json TEXT,
+        scores_json TEXT,
+        signals_json TEXT,
+        evidence_summary_json TEXT,
+        warnings_json TEXT,
+        raw_payload TEXT
+    );
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS strategy_portfolio_states (
+        strategy_id TEXT PRIMARY KEY,
+        strategy_type TEXT,
+        current_state TEXT,
+        recommended_state TEXT,
+        current_role TEXT,
+        confidence TEXT,
+        risk_level TEXT,
+        score REAL,
+        sample_count INTEGER,
+        evidence_count INTEGER,
+        governance_status TEXT,
+        reason_codes_json TEXT,
+        risk_flags_json TEXT,
+        updated_at TEXT,
+        raw_payload TEXT
+    );
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS strategy_portfolio_transitions (
+        transition_id TEXT PRIMARY KEY,
+        strategy_id TEXT,
+        from_state TEXT,
+        to_state TEXT,
+        recommendation TEXT,
+        allowed INTEGER,
+        auto_apply_allowed INTEGER,
+        confidence TEXT,
+        reason_codes_json TEXT,
+        risk_flags_json TEXT,
+        created_at TEXT,
+        raw_payload TEXT
+    );
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS strategy_portfolios (
+        portfolio_id TEXT PRIMARY KEY,
+        generated_at TEXT,
+        champion_strategy_id TEXT,
+        states_json TEXT,
+        transitions_json TEXT,
+        warnings_json TEXT,
+        raw_payload TEXT
+    );
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS strategy_portfolio_reports (
+        report_id TEXT PRIMARY KEY,
+        generated_at TEXT,
+        mode TEXT,
+        champion_strategy_id TEXT,
+        strategy_states_json TEXT,
+        recommended_transitions_json TEXT,
+        warnings_json TEXT,
+        raw_payload TEXT
+    );
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS strategy_budget_rules (
+        rule_id TEXT PRIMARY KEY,
+        rule_type TEXT,
+        description TEXT,
+        enabled INTEGER,
+        priority INTEGER,
+        min_ratio REAL,
+        max_ratio REAL,
+        applies_to_state TEXT,
+        applies_to_strategy_type TEXT,
+        reason_code TEXT,
+        created_at TEXT,
+        raw_payload TEXT
+    );
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS strategy_budget_allocations (
+        allocation_id TEXT PRIMARY KEY,
+        plan_id TEXT,
+        strategy_id TEXT,
+        strategy_type TEXT,
+        state TEXT,
+        role TEXT,
+        score REAL,
+        confidence TEXT,
+        risk_level TEXT,
+        requested_ratio REAL,
+        suggested_ratio REAL,
+        min_floor_ratio REAL,
+        hard_cap_ratio REAL,
+        suggested_slots INTEGER,
+        budget_status TEXT,
+        reason_codes_json TEXT,
+        risk_flags_json TEXT,
+        auto_apply_allowed INTEGER,
+        created_at TEXT,
+        raw_payload TEXT
+    );
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS strategy_budget_plans (
+        plan_id TEXT PRIMARY KEY,
+        generated_at TEXT,
+        mode TEXT,
+        total_budget_hint INTEGER,
+        allocations_json TEXT,
+        total_suggested_ratio REAL,
+        warnings_json TEXT,
+        raw_payload TEXT
+    );
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS strategy_budget_reports (
+        report_id TEXT PRIMARY KEY,
+        generated_at TEXT,
+        mode TEXT,
+        total_budget_hint INTEGER,
+        allocations_json TEXT,
+        warnings_json TEXT,
+        raw_payload TEXT
+    );
+    """,
+    """
     CREATE TABLE IF NOT EXISTS offline_replay_reports (
         report_id TEXT PRIMARY KEY,
         task_name TEXT,
@@ -659,6 +863,28 @@ REFRACTOR_INDEX_DDL: tuple[str, ...] = (
     "CREATE INDEX IF NOT EXISTS idx_strategy_registry_role ON strategy_registry(role, status, task_name);",
     "CREATE INDEX IF NOT EXISTS idx_strategy_allocations_strategy ON strategy_allocations(strategy_id, created_at);",
     "CREATE INDEX IF NOT EXISTS idx_strategy_decisions_strategy ON strategy_decisions(strategy_id, created_at);",
+    "CREATE INDEX IF NOT EXISTS idx_strategy_profiles_type ON strategy_profiles(strategy_type);",
+    "CREATE INDEX IF NOT EXISTS idx_strategy_profiles_source ON strategy_profiles(source);",
+    "CREATE INDEX IF NOT EXISTS idx_strategy_evidence_strategy_id ON strategy_evidence(strategy_id);",
+    "CREATE INDEX IF NOT EXISTS idx_strategy_evidence_type ON strategy_evidence(evidence_type);",
+    "CREATE INDEX IF NOT EXISTS idx_strategy_signals_strategy_id ON strategy_signals(strategy_id);",
+    "CREATE INDEX IF NOT EXISTS idx_strategy_signals_type ON strategy_signals(signal_type);",
+    "CREATE INDEX IF NOT EXISTS idx_strategy_scores_type ON strategy_scores(strategy_type);",
+    "CREATE INDEX IF NOT EXISTS idx_strategy_scores_recommendation ON strategy_scores(recommendation);",
+    "CREATE INDEX IF NOT EXISTS idx_strategy_scoreboards_generated_at ON strategy_scoreboards(generated_at);",
+    "CREATE INDEX IF NOT EXISTS idx_strategy_portfolio_states_state ON strategy_portfolio_states(current_state, recommended_state);",
+    "CREATE INDEX IF NOT EXISTS idx_strategy_portfolio_states_type ON strategy_portfolio_states(strategy_type);",
+    "CREATE INDEX IF NOT EXISTS idx_strategy_portfolio_transitions_strategy_id ON strategy_portfolio_transitions(strategy_id);",
+    "CREATE INDEX IF NOT EXISTS idx_strategy_portfolio_transitions_recommendation ON strategy_portfolio_transitions(recommendation);",
+    "CREATE INDEX IF NOT EXISTS idx_strategy_portfolios_generated_at ON strategy_portfolios(generated_at);",
+    "CREATE INDEX IF NOT EXISTS idx_strategy_portfolio_reports_generated_at ON strategy_portfolio_reports(generated_at);",
+    "CREATE INDEX IF NOT EXISTS idx_strategy_budget_rules_type ON strategy_budget_rules(rule_type);",
+    "CREATE INDEX IF NOT EXISTS idx_strategy_budget_rules_state ON strategy_budget_rules(applies_to_state);",
+    "CREATE INDEX IF NOT EXISTS idx_strategy_budget_allocations_plan_id ON strategy_budget_allocations(plan_id);",
+    "CREATE INDEX IF NOT EXISTS idx_strategy_budget_allocations_strategy_id ON strategy_budget_allocations(strategy_id);",
+    "CREATE INDEX IF NOT EXISTS idx_strategy_budget_allocations_status ON strategy_budget_allocations(budget_status);",
+    "CREATE INDEX IF NOT EXISTS idx_strategy_budget_plans_generated_at ON strategy_budget_plans(generated_at);",
+    "CREATE INDEX IF NOT EXISTS idx_strategy_budget_reports_generated_at ON strategy_budget_reports(generated_at);",
     "CREATE INDEX IF NOT EXISTS idx_offline_replay_reports_task ON offline_replay_reports(task_name, decision_type, created_at);",
     "CREATE INDEX IF NOT EXISTS idx_offline_replay_runs_status ON offline_replay_runs(status);",
     "CREATE INDEX IF NOT EXISTS idx_offline_replay_policy_decisions_run_id ON offline_replay_policy_decisions(replay_run_id);",
@@ -794,6 +1020,61 @@ COMPAT_COLUMNS: dict[str, dict[str, str]] = {
         "status": "TEXT",
         "created_at": "TEXT",
         "updated_at": "TEXT",
+        "raw_payload": "TEXT",
+    },
+    "strategy_budget_rules": {
+        "rule_id": "TEXT",
+        "rule_type": "TEXT",
+        "description": "TEXT",
+        "enabled": "INTEGER",
+        "priority": "INTEGER",
+        "min_ratio": "REAL",
+        "max_ratio": "REAL",
+        "applies_to_state": "TEXT",
+        "applies_to_strategy_type": "TEXT",
+        "reason_code": "TEXT",
+        "created_at": "TEXT",
+        "raw_payload": "TEXT",
+    },
+    "strategy_budget_allocations": {
+        "allocation_id": "TEXT",
+        "plan_id": "TEXT",
+        "strategy_id": "TEXT",
+        "strategy_type": "TEXT",
+        "state": "TEXT",
+        "role": "TEXT",
+        "score": "REAL",
+        "confidence": "TEXT",
+        "risk_level": "TEXT",
+        "requested_ratio": "REAL",
+        "suggested_ratio": "REAL",
+        "min_floor_ratio": "REAL",
+        "hard_cap_ratio": "REAL",
+        "suggested_slots": "INTEGER",
+        "budget_status": "TEXT",
+        "reason_codes_json": "TEXT",
+        "risk_flags_json": "TEXT",
+        "auto_apply_allowed": "INTEGER",
+        "created_at": "TEXT",
+        "raw_payload": "TEXT",
+    },
+    "strategy_budget_plans": {
+        "plan_id": "TEXT",
+        "generated_at": "TEXT",
+        "mode": "TEXT",
+        "total_budget_hint": "INTEGER",
+        "allocations_json": "TEXT",
+        "total_suggested_ratio": "REAL",
+        "warnings_json": "TEXT",
+        "raw_payload": "TEXT",
+    },
+    "strategy_budget_reports": {
+        "report_id": "TEXT",
+        "generated_at": "TEXT",
+        "mode": "TEXT",
+        "total_budget_hint": "INTEGER",
+        "allocations_json": "TEXT",
+        "warnings_json": "TEXT",
         "raw_payload": "TEXT",
     },
     "offline_replay_reports": {

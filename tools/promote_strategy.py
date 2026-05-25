@@ -24,7 +24,8 @@ def main() -> int:
         print(json.dumps({"promoted": False, **evaluation}, ensure_ascii=False, indent=2, default=str))
         return 1
     if args.force and registry is not None:
-        champions = [s for s in registry.list_strategies() if s.get("role") == "champion"]
+        listing = registry.list_portfolio_strategies() if hasattr(registry, "list_portfolio_strategies") else registry.list_strategies()
+        champions = [s for s in listing if s.get("role") == "champion"]
         for champion in champions:
             registry.update_role(str(champion.get("strategy_id")), "previous_champion", f"force_promote:{args.reason or 'manual_force'}")
         registry.update_role(args.strategy_id, "champion", f"force_promote:{args.reason or 'manual_force'}")
