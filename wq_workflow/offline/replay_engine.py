@@ -50,6 +50,7 @@ class ReplayEngine:
             policies=[policy.name() for policy in policy_objects],
             dataset_filter=filt,
             started_at=utc_now_iso(),
+            raw_payload={"counterfactual_available": bool(getattr(self.config, "enable_counterfactual_evaluation", False))},
         )
         try:
             self.repository.initialize()
@@ -151,6 +152,19 @@ class ReplayEngine:
         challengers = [item.policy_name for item in metric_items if item.policy_name != baseline]
         return self.comparator.compare(replay_run_id, baseline, challengers, metric_items)
 
+    def collect_counterfactual_requests(self, replay_run_id: str, limit: int = 1000):
+        """Return replay decisions eligible for Phase 5C without mutating replay outcomes."""
+        try:
+            decisions = self.repository.list_policy_decisions(replay_run_id)
+            return [
+                item
+                for item in decisions
+                if not item.observable_outcome and "insufficient_counterfactual_evidence" in set(item.reason_codes or [])
+            ][: max(1, int(limit))]
+        except Exception as exc:
+            self._warn(f"collect_counterfactual_requests_failed: {exc}")
+            return []
+
     def _normalize_policies(self, policies: list[ReplayPolicy | str] | None) -> list[ReplayPolicy]:
         if not policies:
             configured = getattr(self.config, "offline_replay_include_policies", None)
@@ -168,6 +182,7 @@ class ReplayEngine:
                 mode=str(getattr(self.config, "offline_replay_mode", "advisory") or "advisory"),
                 latest_replay_run_id=run.replay_run_id,
             )
+            run.raw_payload.setdefault("counterfactual_available", bool(getattr(self.config, "enable_counterfactual_evaluation", False)))
         except Exception as exc:
             self._warn(f"update_report_failed: {exc}")
 

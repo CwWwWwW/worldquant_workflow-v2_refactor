@@ -24,6 +24,7 @@ class AppContext:
     experiment_service: Any = None
     decision_snapshot_service: Any = None
     offline_replay_service: Any = None
+    counterfactual_service: Any = None
     experiment_services: dict[str, Any] = field(default_factory=dict)
     monitoring_services: dict[str, Any] = field(default_factory=dict)
     legacy_adapters: dict[str, Any] = field(default_factory=dict)

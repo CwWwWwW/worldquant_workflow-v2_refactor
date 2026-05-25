@@ -635,3 +635,243 @@ class ReplayComparison:
             created_at=_text(source.get("created_at") or utc_now_iso()),
             raw_payload=_clean_dict(source.get("raw_payload") or {}),
         )
+
+
+
+COUNTERFACTUAL_CONFIDENCE_LEVELS = {"insufficient", "low", "medium", "high"}
+COUNTERFACTUAL_VERDICTS = {"insufficient_evidence", "likely_better", "likely_worse", "no_clear_difference", "high_risk_estimate"}
+
+
+@dataclass
+class CounterfactualRequest:
+    request_id: str = ""
+    replay_run_id: str | None = None
+    policy_decision_id: str | None = None
+    decision_id: str = ""
+    decision_type: str = "unknown"
+    target_action: DecisionAction | None = None
+    actual_action: DecisionAction | None = None
+    alpha_id: str | None = None
+    experiment_id: str | None = None
+    arm_id: str | None = None
+    budget_plan_id: str | None = None
+    features: dict[str, Any] = field(default_factory=dict)
+    context: dict[str, Any] = field(default_factory=dict)
+    min_evidence: int = 30
+    created_at: str = field(default_factory=utc_now_iso)
+    raw_payload: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return _clean_dict(
+            {
+                "request_id": self.request_id,
+                "replay_run_id": _nullable_text(self.replay_run_id),
+                "policy_decision_id": _nullable_text(self.policy_decision_id),
+                "decision_id": self.decision_id,
+                "decision_type": self.decision_type or "unknown",
+                "target_action": None if self.target_action is None else DecisionAction.from_dict(self.target_action).to_dict(),
+                "actual_action": None if self.actual_action is None else DecisionAction.from_dict(self.actual_action).to_dict(),
+                "alpha_id": _nullable_text(self.alpha_id),
+                "experiment_id": _nullable_text(self.experiment_id),
+                "arm_id": _nullable_text(self.arm_id),
+                "budget_plan_id": _nullable_text(self.budget_plan_id),
+                "features": _clean_dict(self.features),
+                "context": _clean_dict(self.context),
+                "min_evidence": int(_nullable_int(self.min_evidence) or 0),
+                "created_at": self.created_at or utc_now_iso(),
+                "raw_payload": _clean_dict(self.raw_payload),
+            }
+        )
+
+    @classmethod
+    def from_dict(cls, data: Any) -> "CounterfactualRequest":
+        source = data.to_dict() if isinstance(data, CounterfactualRequest) else (data if isinstance(data, dict) else {})
+        return cls(
+            request_id=_text(source.get("request_id")),
+            replay_run_id=_nullable_text(source.get("replay_run_id")),
+            policy_decision_id=_nullable_text(source.get("policy_decision_id")),
+            decision_id=_text(source.get("decision_id")),
+            decision_type=_text(source.get("decision_type") or "unknown", "unknown"),
+            target_action=DecisionAction.from_dict(source.get("target_action") or source.get("target_action_json")) if (source.get("target_action") or source.get("target_action_json")) else None,
+            actual_action=DecisionAction.from_dict(source.get("actual_action") or source.get("actual_action_json")) if (source.get("actual_action") or source.get("actual_action_json")) else None,
+            alpha_id=_nullable_text(source.get("alpha_id")),
+            experiment_id=_nullable_text(source.get("experiment_id")),
+            arm_id=_nullable_text(source.get("arm_id")),
+            budget_plan_id=_nullable_text(source.get("budget_plan_id")),
+            features=_clean_dict(source.get("features") or source.get("features_json") or {}),
+            context=_clean_dict(source.get("context") or source.get("context_json") or {}),
+            min_evidence=int(_nullable_int(source.get("min_evidence")) or 30),
+            created_at=_text(source.get("created_at") or utc_now_iso()),
+            raw_payload=_clean_dict(source.get("raw_payload") or {}),
+        )
+
+
+@dataclass
+class CounterfactualEvidence:
+    evidence_id: str = ""
+    request_id: str = ""
+    source_decision_id: str = ""
+    source_alpha_id: str | None = None
+    action_id: str | None = None
+    action_type: str | None = None
+    similarity_score: float = 0.0
+    reward: float | None = None
+    success: bool | None = None
+    platform_sc_abs_max: float | None = None
+    quality_passed: bool | None = None
+    reason_codes: list[str] = field(default_factory=list)
+    raw_payload: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return _clean_dict(
+            {
+                "evidence_id": self.evidence_id,
+                "request_id": self.request_id,
+                "source_decision_id": self.source_decision_id,
+                "source_alpha_id": _nullable_text(self.source_alpha_id),
+                "action_id": _nullable_text(self.action_id),
+                "action_type": _nullable_text(self.action_type),
+                "similarity_score": float(_nullable_float(self.similarity_score) or 0.0),
+                "reward": _nullable_float(self.reward),
+                "success": _nullable_bool(self.success),
+                "platform_sc_abs_max": _nullable_float(self.platform_sc_abs_max),
+                "quality_passed": _nullable_bool(self.quality_passed),
+                "reason_codes": [str(item) for item in _clean_list(self.reason_codes)],
+                "raw_payload": _clean_dict(self.raw_payload),
+            }
+        )
+
+    @classmethod
+    def from_dict(cls, data: Any) -> "CounterfactualEvidence":
+        source = data.to_dict() if isinstance(data, CounterfactualEvidence) else (data if isinstance(data, dict) else {})
+        return cls(
+            evidence_id=_text(source.get("evidence_id")),
+            request_id=_text(source.get("request_id")),
+            source_decision_id=_text(source.get("source_decision_id")),
+            source_alpha_id=_nullable_text(source.get("source_alpha_id")),
+            action_id=_nullable_text(source.get("action_id")),
+            action_type=_nullable_text(source.get("action_type")),
+            similarity_score=float(_nullable_float(source.get("similarity_score")) or 0.0),
+            reward=_nullable_float(source.get("reward")),
+            success=_nullable_bool(source.get("success")),
+            platform_sc_abs_max=_nullable_float(source.get("platform_sc_abs_max")),
+            quality_passed=_nullable_bool(source.get("quality_passed")),
+            reason_codes=[str(item) for item in _clean_list(source.get("reason_codes"))],
+            raw_payload=_clean_dict(source.get("raw_payload") or {}),
+        )
+
+
+@dataclass
+class CounterfactualEstimate:
+    estimate_id: str = ""
+    request_id: str = ""
+    decision_id: str = ""
+    target_action_json: dict[str, Any] | None = None
+    evidence_count: int = 0
+    effective_evidence_count: int = 0
+    estimated_reward: float | None = None
+    estimated_success_rate: float | None = None
+    estimated_platform_sc_abs_max: float | None = None
+    estimated_quality_pass_rate: float | None = None
+    confidence: str = "insufficient"
+    verdict: str = "insufficient_evidence"
+    risk_flags: list[str] = field(default_factory=list)
+    reason_codes: list[str] = field(default_factory=list)
+    estimated_not_observed: bool = True
+    created_at: str = field(default_factory=utc_now_iso)
+    raw_payload: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        confidence = self.confidence if self.confidence in COUNTERFACTUAL_CONFIDENCE_LEVELS else "insufficient"
+        verdict = self.verdict if self.verdict in COUNTERFACTUAL_VERDICTS else "insufficient_evidence"
+        return _clean_dict(
+            {
+                "estimate_id": self.estimate_id,
+                "request_id": self.request_id,
+                "decision_id": self.decision_id,
+                "target_action_json": None if self.target_action_json is None else _clean_dict(self.target_action_json),
+                "evidence_count": int(_nullable_int(self.evidence_count) or 0),
+                "effective_evidence_count": int(_nullable_int(self.effective_evidence_count) or 0),
+                "estimated_reward": _nullable_float(self.estimated_reward),
+                "estimated_success_rate": _nullable_float(self.estimated_success_rate),
+                "estimated_platform_sc_abs_max": _nullable_float(self.estimated_platform_sc_abs_max),
+                "estimated_quality_pass_rate": _nullable_float(self.estimated_quality_pass_rate),
+                "confidence": confidence,
+                "verdict": verdict,
+                "risk_flags": [str(item) for item in _clean_list(self.risk_flags)],
+                "reason_codes": [str(item) for item in _clean_list(self.reason_codes)],
+                "estimated_not_observed": True if self.estimated_not_observed is None else bool(self.estimated_not_observed),
+                "created_at": self.created_at or utc_now_iso(),
+                "raw_payload": _clean_dict(self.raw_payload),
+            }
+        )
+
+    @classmethod
+    def from_dict(cls, data: Any) -> "CounterfactualEstimate":
+        source = data.to_dict() if isinstance(data, CounterfactualEstimate) else (data if isinstance(data, dict) else {})
+        return cls(
+            estimate_id=_text(source.get("estimate_id")),
+            request_id=_text(source.get("request_id")),
+            decision_id=_text(source.get("decision_id")),
+            target_action_json=_clean_dict(source.get("target_action_json") or {}) if source.get("target_action_json") is not None else None,
+            evidence_count=int(_nullable_int(source.get("evidence_count")) or 0),
+            effective_evidence_count=int(_nullable_int(source.get("effective_evidence_count")) or 0),
+            estimated_reward=_nullable_float(source.get("estimated_reward")),
+            estimated_success_rate=_nullable_float(source.get("estimated_success_rate")),
+            estimated_platform_sc_abs_max=_nullable_float(source.get("estimated_platform_sc_abs_max")),
+            estimated_quality_pass_rate=_nullable_float(source.get("estimated_quality_pass_rate")),
+            confidence=_text(source.get("confidence") or "insufficient", "insufficient"),
+            verdict=_text(source.get("verdict") or "insufficient_evidence", "insufficient_evidence"),
+            risk_flags=[str(item) for item in _clean_list(source.get("risk_flags"))],
+            reason_codes=[str(item) for item in _clean_list(source.get("reason_codes"))],
+            estimated_not_observed=bool(_nullable_bool(source.get("estimated_not_observed")) if source.get("estimated_not_observed") is not None else True),
+            created_at=_text(source.get("created_at") or utc_now_iso()),
+            raw_payload=_clean_dict(source.get("raw_payload") or {}),
+        )
+
+
+@dataclass
+class CounterfactualSummary:
+    summary_id: str = ""
+    decision_type: str | None = None
+    request_count: int = 0
+    estimate_count: int = 0
+    insufficient_count: int = 0
+    high_risk_count: int = 0
+    medium_or_high_confidence_count: int = 0
+    avg_evidence_count: float | None = None
+    updated_at: str = field(default_factory=utc_now_iso)
+    raw_payload: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return _clean_dict(
+            {
+                "summary_id": self.summary_id or f"summary:{self.decision_type or 'all'}",
+                "decision_type": _nullable_text(self.decision_type),
+                "request_count": int(_nullable_int(self.request_count) or 0),
+                "estimate_count": int(_nullable_int(self.estimate_count) or 0),
+                "insufficient_count": int(_nullable_int(self.insufficient_count) or 0),
+                "high_risk_count": int(_nullable_int(self.high_risk_count) or 0),
+                "medium_or_high_confidence_count": int(_nullable_int(self.medium_or_high_confidence_count) or 0),
+                "avg_evidence_count": _nullable_float(self.avg_evidence_count),
+                "updated_at": self.updated_at or utc_now_iso(),
+                "raw_payload": _clean_dict(self.raw_payload),
+            }
+        )
+
+    @classmethod
+    def from_dict(cls, data: Any) -> "CounterfactualSummary":
+        source = data.to_dict() if isinstance(data, CounterfactualSummary) else (data if isinstance(data, dict) else {})
+        decision_type = _nullable_text(source.get("decision_type"))
+        return cls(
+            summary_id=_text(source.get("summary_id") or f"summary:{decision_type or 'all'}"),
+            decision_type=decision_type,
+            request_count=int(_nullable_int(source.get("request_count")) or 0),
+            estimate_count=int(_nullable_int(source.get("estimate_count")) or 0),
+            insufficient_count=int(_nullable_int(source.get("insufficient_count")) or 0),
+            high_risk_count=int(_nullable_int(source.get("high_risk_count")) or 0),
+            medium_or_high_confidence_count=int(_nullable_int(source.get("medium_or_high_confidence_count")) or 0),
+            avg_evidence_count=_nullable_float(source.get("avg_evidence_count")),
+            updated_at=_text(source.get("updated_at") or utc_now_iso()),
+            raw_payload=_clean_dict(source.get("raw_payload") or {}),
+        )

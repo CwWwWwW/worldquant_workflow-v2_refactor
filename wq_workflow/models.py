@@ -127,6 +127,18 @@ class WorkflowConfig:
     offline_replay_baseline_policy: str = "legacy"
     offline_replay_include_policies: list[str] = field(default_factory=lambda: ["actual_chosen", "legacy", "model_choice", "experiment_choice", "budget_choice"])
     offline_replay_fail_open: bool = True
+    counterfactual_status_path: str = "runtime/status/counterfactual_report.json"
+    counterfactual_mode: str = "advisory"
+    counterfactual_auto_run: bool = False
+    counterfactual_default_limit: int = 1000
+    counterfactual_min_evidence: int = 30
+    counterfactual_min_effective_evidence: int = 15
+    counterfactual_similarity_threshold: float = 0.55
+    counterfactual_high_sc_abs_max_threshold: float = 0.70
+    counterfactual_low_success_rate_threshold: float = 0.02
+    counterfactual_medium_confidence_evidence: int = 100
+    counterfactual_high_confidence_evidence: int = 500
+    counterfactual_fail_open: bool = True
     support_min_action_count: int = 10
     support_min_context_count: int = 20
     enable_auto_promotion: bool = False

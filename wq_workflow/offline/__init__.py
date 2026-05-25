@@ -3,6 +3,10 @@ from .schema import (
     DecisionOutcome,
     DecisionSnapshot,
     DecisionSnapshotSummary,
+    CounterfactualEstimate,
+    CounterfactualEvidence,
+    CounterfactualRequest,
+    CounterfactualSummary,
     ReplayComparison,
     ReplayDatasetFilter,
     ReplayPolicyDecision,
@@ -13,12 +17,19 @@ from .schema import (
 from .decision_snapshot import DecisionOutcomeRecorder, DecisionSnapshotBuilder, DecisionSnapshotLogger
 from .repository import DecisionSnapshotRepository
 from .reporter import DecisionSnapshotReporter
+from .counterfactual_dataset import CounterfactualDatasetLoader
+from .counterfactual_evaluator import CounterfactualEvaluator
+from .counterfactual_features import CounterfactualFeatureBuilder
+from .counterfactual_metrics import CounterfactualMetricsCalculator
+from .counterfactual_neighbors import CounterfactualNeighborIndex
+from .counterfactual_repository import CounterfactualRepository
+from .counterfactual_reporter import CounterfactualReporter
 from .replay_dataset import ReplayDatasetLoader
 from .replay_engine import ReplayEngine
 from .replay_policy import ActualChosenReplayPolicy, BudgetChoiceReplayPolicy, ExperimentChoiceReplayPolicy, LegacyReplayPolicy, ModelChoiceReplayPolicy, ReplayPolicy
 from .replay_repository import ReplayRepository
 from .replay_reporter import ReplayReporter
-from .service import DecisionSnapshotService, OfflineReplayService
+from .service import CounterfactualService, DecisionSnapshotService, OfflineReplayService
 
 try:  # Existing Phase 4/strategy imports are kept for compatibility only.
     from .counterfactual import CounterfactualEstimator
@@ -34,6 +45,10 @@ __all__ = [
     "DecisionOutcome",
     "DecisionSnapshot",
     "DecisionSnapshotSummary",
+    "CounterfactualEstimate",
+    "CounterfactualEvidence",
+    "CounterfactualRequest",
+    "CounterfactualSummary",
     "ReplayComparison",
     "ReplayDatasetFilter",
     "ReplayPolicyDecision",
@@ -46,6 +61,14 @@ __all__ = [
     "DecisionSnapshotRepository",
     "DecisionSnapshotReporter",
     "DecisionSnapshotService",
+    "CounterfactualDatasetLoader",
+    "CounterfactualEvaluator",
+    "CounterfactualFeatureBuilder",
+    "CounterfactualMetricsCalculator",
+    "CounterfactualNeighborIndex",
+    "CounterfactualRepository",
+    "CounterfactualReporter",
+    "CounterfactualService",
     "ReplayDatasetLoader",
     "ReplayEngine",
     "ReplayPolicy",

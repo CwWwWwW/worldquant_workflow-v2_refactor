@@ -4,6 +4,25 @@ from typing import Any
 
 from wq_workflow.data.json_utils import json_loads_safe, safe_float
 
+try:
+    from .counterfactual_dataset import CounterfactualDatasetLoader
+    from .counterfactual_evaluator import CounterfactualEvaluator
+    from .counterfactual_features import CounterfactualFeatureBuilder
+    from .counterfactual_metrics import CounterfactualMetricsCalculator
+    from .counterfactual_neighbors import CounterfactualNeighborIndex
+    from .counterfactual_repository import CounterfactualRepository
+    from .counterfactual_reporter import CounterfactualReporter
+    from .service import CounterfactualService
+except Exception:  # pragma: no cover - preserves legacy estimator import if optional modules fail.
+    CounterfactualDatasetLoader = None  # type: ignore
+    CounterfactualEvaluator = None  # type: ignore
+    CounterfactualFeatureBuilder = None  # type: ignore
+    CounterfactualMetricsCalculator = None  # type: ignore
+    CounterfactualNeighborIndex = None  # type: ignore
+    CounterfactualRepository = None  # type: ignore
+    CounterfactualReporter = None  # type: ignore
+    CounterfactualService = None  # type: ignore
+
 
 def _action_key(action: dict[str, Any] | None) -> str:
     data = action if isinstance(action, dict) else {}

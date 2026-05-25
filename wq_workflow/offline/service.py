@@ -4,13 +4,17 @@ from pathlib import Path
 from typing import Any
 
 from .decision_snapshot import DecisionSnapshotBuilder
+from .counterfactual_dataset import CounterfactualDatasetLoader
+from .counterfactual_evaluator import CounterfactualEvaluator
+from .counterfactual_reporter import CounterfactualReporter
+from .counterfactual_repository import CounterfactualRepository
 from .replay_dataset import ReplayDatasetLoader
 from .replay_engine import ReplayEngine
 from .replay_reporter import ReplayReporter
 from .replay_repository import ReplayRepository
 from .repository import DecisionSnapshotRepository
 from .reporter import DecisionSnapshotReporter
-from .schema import DecisionOutcome, DecisionSnapshot, ReplayDatasetFilter, ReplayRun, utc_now_iso
+from .schema import CounterfactualEstimate, CounterfactualRequest, DecisionOutcome, DecisionSnapshot, ReplayDatasetFilter, ReplayRun, utc_now_iso
 
 
 class DecisionSnapshotService:
@@ -306,6 +310,118 @@ class OfflineReplayService:
         try:
             if self.logger is not None:
                 self.logger.warning("offline replay service: %s", message)
+        except Exception:
+            pass
+        if not self.fail_open:
+            self.available = False
+
+
+
+class CounterfactualService:
+    def __init__(
+        self,
+        *,
+        config: Any | None = None,
+        repository: CounterfactualRepository | None = None,
+        reporter: CounterfactualReporter | None = None,
+        dataset_loader: CounterfactualDatasetLoader | None = None,
+        evaluator: CounterfactualEvaluator | None = None,
+        storage: Any | None = None,
+        db_path: str | Path | None = None,
+        logger: Any | None = None,
+    ) -> None:
+        self.config = config
+        self.logger = logger
+        self.enabled = bool(getattr(config, "enable_counterfactual_evaluation", False))
+        self.auto_run = bool(getattr(config, "counterfactual_auto_run", False))
+        self.mode = str(getattr(config, "counterfactual_mode", "advisory") or "advisory")
+        self.fail_open = bool(getattr(config, "counterfactual_fail_open", True))
+        self.repository = repository or CounterfactualRepository(storage=storage, db_path=db_path or getattr(config, "storage_db_path", None), logger=logger)
+        self.dataset_loader = dataset_loader or CounterfactualDatasetLoader(storage=storage, db_path=db_path or getattr(config, "storage_db_path", None), config=config, logger=logger)
+        status_path = getattr(config, "counterfactual_status_path", "runtime/status/counterfactual_report.json")
+        self.reporter = reporter or CounterfactualReporter(repository=self.repository, status_path=status_path, logger=logger)
+        self.evaluator = evaluator or CounterfactualEvaluator(
+            dataset_loader=self.dataset_loader,
+            repository=self.repository,
+            reporter=self.reporter,
+            config=config,
+            storage=storage,
+            db_path=str(db_path) if db_path is not None else None,
+            logger=logger,
+        )
+        self.available = True
+        self.warnings: list[str] = []
+
+    def startup_check(self) -> dict[str, Any]:
+        try:
+            result = self.repository.initialize()
+            if not result.get("ok", False):
+                self.available = False
+                self._warn(str(result.get("error") or getattr(self.repository, "last_error", "repository_initialize_failed")))
+                return {"ok": False, "enabled": self.enabled, "available": False, "mode": self.mode, "warnings": list(self.warnings)}
+            report = self.update_report()
+            if self.enabled and self.auto_run:
+                self.evaluate_replay_run(limit=int(getattr(self.config, "counterfactual_default_limit", 1000) or 1000))
+            return {"ok": True, "enabled": self.enabled, "available": True, "mode": self.mode, "auto_run": self.auto_run, "report": report, "warnings": list(self.warnings)}
+        except Exception as exc:
+            self.available = False
+            self._warn(f"startup_check_failed: {exc}")
+            return {"ok": False, "enabled": self.enabled, "available": False, "mode": self.mode, "warnings": list(self.warnings)}
+
+    def evaluate_request(self, request: CounterfactualRequest | dict[str, Any]) -> CounterfactualEstimate:
+        if not self.available:
+            return CounterfactualEstimate(verdict="insufficient_evidence", confidence="insufficient", reason_codes=["counterfactual_unavailable"], estimated_not_observed=True)
+        try:
+            return self.evaluator.evaluate_request(request)
+        except Exception as exc:
+            self._warn(f"evaluate_request_failed: {exc}")
+            req = CounterfactualRequest.from_dict(request)
+            return CounterfactualEstimate(request_id=req.request_id, decision_id=req.decision_id, verdict="insufficient_evidence", confidence="insufficient", reason_codes=["counterfactual_evaluation_failed"], estimated_not_observed=True)
+
+    def evaluate_replay_run(self, replay_run_id: str | None = None, limit: int | None = None) -> list[CounterfactualEstimate]:
+        if not self.available:
+            return []
+        try:
+            return self.evaluator.evaluate_replay_run(replay_run_id=replay_run_id, limit=int(limit or getattr(self.config, "counterfactual_default_limit", 1000) or 1000))
+        except Exception as exc:
+            self._warn(f"evaluate_replay_run_failed: {exc}")
+            return []
+
+    def get_latest_report(self) -> dict[str, Any]:
+        path = Path(str(getattr(self.reporter, "status_path", "runtime/status/counterfactual_report.json")))
+        try:
+            if path.exists():
+                import json
+
+                data = json.loads(path.read_text(encoding="utf-8"))
+                return data if isinstance(data, dict) else {}
+        except Exception as exc:
+            self._warn(f"get_latest_report_failed: {exc}")
+        return self.update_report()
+
+    def get_counterfactual_evidence_summary(self) -> dict[str, Any]:
+        try:
+            summaries = [item.to_dict() for item in self.repository.list_summaries()]
+            estimates = [item.to_dict() for item in self.repository.list_estimates(limit=20)]
+            return {"available": self.available, "enabled": self.enabled, "mode": self.mode, "summaries": summaries, "recent_estimates": estimates, "warnings": list(self.warnings)}
+        except Exception as exc:
+            self._warn(f"get_counterfactual_evidence_summary_failed: {exc}")
+            return {"available": False, "enabled": self.enabled, "warnings": list(self.warnings)}
+
+    def update_report(self) -> dict[str, Any]:
+        try:
+            self.repository.update_summary(None)
+            return self.reporter.update(enabled=self.enabled, mode=self.mode, warnings=list(self.warnings))
+        except Exception as exc:
+            self._warn(f"update_report_failed: {exc}")
+            return {"ok": False, "enabled": self.enabled, "warnings": list(self.warnings)}
+
+    def _warn(self, message: str) -> None:
+        self.warnings.append(message)
+        self.warnings = self.warnings[-50:]
+        try:
+            if self.logger is not None:
+                self.logger.warning("counterfactual service: %s", message)
         except Exception:
             pass
         if not self.fail_open:

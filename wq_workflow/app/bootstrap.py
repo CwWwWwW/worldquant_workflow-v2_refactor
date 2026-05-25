@@ -54,7 +54,7 @@ def build_app_context(config_path: str | Path | None = None, config: Any | None 
     from wq_workflow.learning.sc.sample_store import SCSampleStore
     from wq_workflow.learning.sc.trainer import SCTrainer
     from wq_workflow.offline.decision_snapshot import DecisionOutcomeRecorder, DecisionSnapshotLogger
-    from wq_workflow.offline.service import DecisionSnapshotService, OfflineReplayService
+    from wq_workflow.offline.service import CounterfactualService, DecisionSnapshotService, OfflineReplayService
     from wq_workflow.offline.support_checker import SupportChecker
     from wq_workflow.strategy.budget_allocator import BudgetAllocator
     from wq_workflow.strategy.champion_challenger import ModelSafetyGate
@@ -150,6 +150,20 @@ def build_app_context(config_path: str | Path | None = None, config: Any | None 
     except Exception as exc:
         logger.warning("offline replay service initialization skipped: %s", exc)
         offline_replay_service = None
+    counterfactual_service = None
+    try:
+        counterfactual_service = CounterfactualService(
+            config=config,
+            storage=storage,
+            db_path=getattr(config, "storage_db_path", "runtime/db/workflow.db"),
+            logger=logger,
+        )
+        ctx.counterfactual_service = counterfactual_service
+        ctx.offline_services["counterfactual"] = counterfactual_service
+        ctx.runtime_status.setdefault("offline", {})["counterfactual"] = counterfactual_service.startup_check()
+    except Exception as exc:
+        logger.warning("counterfactual service initialization skipped: %s", exc)
+        counterfactual_service = None
     if getattr(ctx, "experiment_service", None) is not None:
         try:
             ctx.experiment_service.config = config
@@ -201,6 +215,7 @@ def build_app_context(config_path: str | Path | None = None, config: Any | None 
         "decision_outcome_recorder": decision_outcome,
         "decision_snapshot": decision_snapshot_service,
         "counterfactual_estimator": counterfactual_estimator,
+        "counterfactual": counterfactual_service,
         "support_checker": support_checker,
         "replay_evaluator": replay_evaluator,
         "replay": offline_replay_service,
