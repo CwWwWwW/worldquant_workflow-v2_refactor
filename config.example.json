@@ -256,7 +256,7 @@
   "_comment": "账号密码和 DeepSeek API Key 推荐用环境变量 WORLDQUANT_EMAIL/WORLDQUANT_PASSWORD/DEEPSEEK_API_KEY 注入。当前工作流不设置单模板最大迭代次数，会持续迭代直到成功收藏或被红线规则放弃。",
   "enable_support_checker": true,
   "enable_challenger_live_budget": false,
-  "strategy_default_champion": "legacy_champion",
+  "strategy_default_champion": "legacy_baseline",
   "strategy_challenger_live_budget": 0.0,
   "strategy_random_baseline_budget": 0.0,
   "promotion_min_samples": 200,
@@ -292,5 +292,16 @@
   "decision_snapshot_record_experiment_arm_selection": true,
   "decision_snapshot_record_budget_plan_selection": true,
   "decision_snapshot_record_candidate_acceptance": true,
-  "decision_snapshot_fail_open": true
+  "decision_snapshot_fail_open": true,
+  "strategy_portfolio_status_path": "runtime/status/strategy_portfolio_report.json",
+  "strategy_portfolio_mode": "advisory",
+  "strategy_portfolio_auto_refresh": false,
+  "strategy_portfolio_fail_open": true,
+  "strategy_challenger_min_samples": 100,
+  "strategy_limited_active_min_samples": 500,
+  "strategy_challenger_min_confidence": "medium",
+  "strategy_limited_active_min_confidence": "high",
+  "strategy_block_high_sc_risk": true,
+  "strategy_allow_auto_champion_promotion": false,
+  "strategy_transition_auto_apply": false
 }

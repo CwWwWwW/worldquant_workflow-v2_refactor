@@ -64,6 +64,7 @@ def build_app_context(config_path: str | Path | None = None, config: Any | None 
     from wq_workflow.strategy.registry import StrategyRegistry
     from wq_workflow.strategy.rollback import RollbackPolicy
     from wq_workflow.strategy.service import StrategyService
+    from wq_workflow.strategy.portfolio_service import StrategyPortfolioService
     from wq_workflow.experiment.planner import ExperimentPlanner
     from wq_workflow.monitoring.drift_monitor import DriftMonitor
     from wq_workflow.learning.insight.feedback import InsightFeedbackRecorder
@@ -292,6 +293,23 @@ def build_app_context(config_path: str | Path | None = None, config: Any | None 
             ctx.runtime_status["strategy_registry"] = {"ok": bool(getattr(config, "strategy_fail_open", True)), "enabled": True, "fail_open": True, "error": str(exc)}
     else:
         ctx.runtime_status["strategy_registry"] = {"ok": True, "enabled": False}
+    try:
+        strategy_portfolio_service = StrategyPortfolioService(
+            config=config,
+            storage=storage,
+            db_path=getattr(config, "storage_db_path", "runtime/db/workflow.db"),
+            logger=logger,
+            strategy_service=getattr(ctx, "strategy_service", None),
+            governance_service=governance_service,
+        )
+        ctx.strategy_portfolio_service = strategy_portfolio_service
+        ctx.strategy_services["legacy_portfolio"] = strategy_portfolio
+        ctx.strategy_services["portfolio"] = strategy_portfolio_service
+        ctx.strategy_services["portfolio_service"] = strategy_portfolio_service
+        ctx.runtime_status["strategy_portfolio"] = strategy_portfolio_service.startup_check()
+    except Exception as exc:
+        logger.warning("strategy portfolio initialization skipped: %s", exc)
+        ctx.runtime_status["strategy_portfolio"] = {"ok": bool(getattr(config, "strategy_portfolio_fail_open", True)), "enabled": bool(getattr(config, "enable_strategy_champion_challenger", False)), "fail_open": True, "error": str(exc)}
     ctx.monitoring_services["drift_monitor"] = DriftMonitor(storage=storage, config=config, logger=logger)
     ctx.legacy_adapters["orchestrator"] = run_legacy_orchestrator
     if bool(getattr(config, "enable_startup_healthcheck", True)):

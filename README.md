@@ -123,3 +123,9 @@ This phase does **not** treat estimates as actual outcomes, overwrite `decision_
 Phase 6A adds an advisory-only Strategy Registry / Scoreboard layer under `wq_workflow/strategy/`. It registers legacy, random exploration, experiment budget, ML parent/mutation, replay-supported, counterfactual-supported, governance-safe, and manual/unknown strategy profiles, then reads Experiment / Replay / Counterfactual / Governance / ML evidence to produce conservative strategy scores and `runtime/status/strategy_scoreboard.json`.
 
 Recommendations are advisory only. This phase does **not** implement Champion/Challenger, Strategy Budget Allocator, hard takeover, strategy promotion, model training, automatic budget apply, reward changes, CandidatePool changes, platform automation changes, or Governance hard-decision flag changes. Counterfactual evidence remains estimated-not-observed and is never treated as an actual outcome.
+
+### Phase 6B: Champion / Challenger Strategy Portfolio
+
+Phase 6B introduces an advisory-only Strategy Portfolio layer. It reads Phase 6A strategy scores plus risk evidence and writes `runtime/status/strategy_portfolio_report.json` with conservative `disabled` / `shadow` / `challenger` / `limited_active` / `champion` state recommendations.
+
+The default champion is `legacy_baseline`. This phase does not perform strategy budget allocation, automatic budget apply, hard takeover, true champion replacement, promotion execution, rollback execution, model training, reward changes, CandidatePool changes, platform automation changes, or Governance hard-flag changes. Legacy portfolio/champion/budget modules remain available but isolated; budget allocator is reserved for a later 6C phase.

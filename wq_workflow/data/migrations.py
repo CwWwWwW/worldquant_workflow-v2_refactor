@@ -524,6 +524,64 @@ REFRACTOR_TABLE_DDL: tuple[str, ...] = (
     );
     """,
     """
+    CREATE TABLE IF NOT EXISTS strategy_portfolio_states (
+        strategy_id TEXT PRIMARY KEY,
+        strategy_type TEXT,
+        current_state TEXT,
+        recommended_state TEXT,
+        current_role TEXT,
+        confidence TEXT,
+        risk_level TEXT,
+        score REAL,
+        sample_count INTEGER,
+        evidence_count INTEGER,
+        governance_status TEXT,
+        reason_codes_json TEXT,
+        risk_flags_json TEXT,
+        updated_at TEXT,
+        raw_payload TEXT
+    );
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS strategy_portfolio_transitions (
+        transition_id TEXT PRIMARY KEY,
+        strategy_id TEXT,
+        from_state TEXT,
+        to_state TEXT,
+        recommendation TEXT,
+        allowed INTEGER,
+        auto_apply_allowed INTEGER,
+        confidence TEXT,
+        reason_codes_json TEXT,
+        risk_flags_json TEXT,
+        created_at TEXT,
+        raw_payload TEXT
+    );
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS strategy_portfolios (
+        portfolio_id TEXT PRIMARY KEY,
+        generated_at TEXT,
+        champion_strategy_id TEXT,
+        states_json TEXT,
+        transitions_json TEXT,
+        warnings_json TEXT,
+        raw_payload TEXT
+    );
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS strategy_portfolio_reports (
+        report_id TEXT PRIMARY KEY,
+        generated_at TEXT,
+        mode TEXT,
+        champion_strategy_id TEXT,
+        strategy_states_json TEXT,
+        recommended_transitions_json TEXT,
+        warnings_json TEXT,
+        raw_payload TEXT
+    );
+    """,
+    """
     CREATE TABLE IF NOT EXISTS offline_replay_reports (
         report_id TEXT PRIMARY KEY,
         task_name TEXT,
@@ -751,6 +809,12 @@ REFRACTOR_INDEX_DDL: tuple[str, ...] = (
     "CREATE INDEX IF NOT EXISTS idx_strategy_scores_type ON strategy_scores(strategy_type);",
     "CREATE INDEX IF NOT EXISTS idx_strategy_scores_recommendation ON strategy_scores(recommendation);",
     "CREATE INDEX IF NOT EXISTS idx_strategy_scoreboards_generated_at ON strategy_scoreboards(generated_at);",
+    "CREATE INDEX IF NOT EXISTS idx_strategy_portfolio_states_state ON strategy_portfolio_states(current_state, recommended_state);",
+    "CREATE INDEX IF NOT EXISTS idx_strategy_portfolio_states_type ON strategy_portfolio_states(strategy_type);",
+    "CREATE INDEX IF NOT EXISTS idx_strategy_portfolio_transitions_strategy_id ON strategy_portfolio_transitions(strategy_id);",
+    "CREATE INDEX IF NOT EXISTS idx_strategy_portfolio_transitions_recommendation ON strategy_portfolio_transitions(recommendation);",
+    "CREATE INDEX IF NOT EXISTS idx_strategy_portfolios_generated_at ON strategy_portfolios(generated_at);",
+    "CREATE INDEX IF NOT EXISTS idx_strategy_portfolio_reports_generated_at ON strategy_portfolio_reports(generated_at);",
     "CREATE INDEX IF NOT EXISTS idx_offline_replay_reports_task ON offline_replay_reports(task_name, decision_type, created_at);",
     "CREATE INDEX IF NOT EXISTS idx_offline_replay_runs_status ON offline_replay_runs(status);",
     "CREATE INDEX IF NOT EXISTS idx_offline_replay_policy_decisions_run_id ON offline_replay_policy_decisions(replay_run_id);",
