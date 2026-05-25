@@ -6,6 +6,8 @@ from wq_workflow.data.json_utils import json_loads_safe, safe_float
 from .counterfactual import CounterfactualEstimator, _action_key
 from .metrics import estimated_reward_delta, estimated_risk_delta, failure_delta, model_match_rate, replay_pass_gate, support_coverage
 from .report import build_replay_report, save_replay_report
+from .replay_engine import ReplayEngine
+from .replay_policy import ActualChosenReplayPolicy, BudgetChoiceReplayPolicy, ExperimentChoiceReplayPolicy, LegacyReplayPolicy, ModelChoiceReplayPolicy, ReplayPolicy
 from .support_checker import SupportChecker
 
 

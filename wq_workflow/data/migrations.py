@@ -459,6 +459,78 @@ REFRACTOR_TABLE_DDL: tuple[str, ...] = (
     );
     """,
     """
+    CREATE TABLE IF NOT EXISTS offline_replay_runs (
+        replay_run_id TEXT PRIMARY KEY,
+        name TEXT,
+        status TEXT,
+        policies_json TEXT,
+        dataset_filter_json TEXT,
+        sample_count INTEGER,
+        observable_count INTEGER,
+        started_at TEXT,
+        completed_at TEXT,
+        raw_payload TEXT
+    );
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS offline_replay_policy_decisions (
+        policy_decision_id TEXT PRIMARY KEY,
+        replay_run_id TEXT,
+        decision_id TEXT,
+        policy_name TEXT,
+        selected_action_json TEXT,
+        selected_matches_actual INTEGER,
+        selected_matches_legacy INTEGER,
+        observable_outcome INTEGER,
+        reward REAL,
+        success INTEGER,
+        platform_sc_abs_max REAL,
+        quality_passed INTEGER,
+        reason_codes_json TEXT,
+        created_at TEXT,
+        raw_payload TEXT
+    );
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS offline_replay_policy_metrics (
+        metric_id TEXT PRIMARY KEY,
+        replay_run_id TEXT,
+        policy_name TEXT,
+        decision_type TEXT,
+        sample_count INTEGER,
+        observable_count INTEGER,
+        coverage_rate REAL,
+        agreement_with_actual_rate REAL,
+        agreement_with_legacy_rate REAL,
+        avg_reward REAL,
+        success_rate REAL,
+        avg_platform_sc_abs_max REAL,
+        quality_pass_rate REAL,
+        insufficient_evidence_count INTEGER,
+        reason_codes_json TEXT,
+        raw_payload TEXT
+    );
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS offline_replay_comparisons (
+        comparison_id TEXT PRIMARY KEY,
+        replay_run_id TEXT,
+        baseline_policy TEXT,
+        challenger_policy TEXT,
+        decision_type TEXT,
+        baseline_metrics_json TEXT,
+        challenger_metrics_json TEXT,
+        reward_delta REAL,
+        success_rate_delta REAL,
+        sc_risk_delta REAL,
+        quality_pass_delta REAL,
+        confidence TEXT,
+        verdict TEXT,
+        created_at TEXT,
+        raw_payload TEXT
+    );
+    """,
+    """
     CREATE TABLE IF NOT EXISTS policy_replay_evaluations (
         evaluation_id TEXT PRIMARY KEY,
         task_name TEXT,
@@ -516,6 +588,13 @@ REFRACTOR_INDEX_DDL: tuple[str, ...] = (
     "CREATE INDEX IF NOT EXISTS idx_strategy_allocations_strategy ON strategy_allocations(strategy_id, created_at);",
     "CREATE INDEX IF NOT EXISTS idx_strategy_decisions_strategy ON strategy_decisions(strategy_id, created_at);",
     "CREATE INDEX IF NOT EXISTS idx_offline_replay_reports_task ON offline_replay_reports(task_name, decision_type, created_at);",
+    "CREATE INDEX IF NOT EXISTS idx_offline_replay_runs_status ON offline_replay_runs(status);",
+    "CREATE INDEX IF NOT EXISTS idx_offline_replay_policy_decisions_run_id ON offline_replay_policy_decisions(replay_run_id);",
+    "CREATE INDEX IF NOT EXISTS idx_offline_replay_policy_decisions_decision_id ON offline_replay_policy_decisions(decision_id);",
+    "CREATE INDEX IF NOT EXISTS idx_offline_replay_policy_metrics_run_id ON offline_replay_policy_metrics(replay_run_id);",
+    "CREATE INDEX IF NOT EXISTS idx_offline_replay_policy_metrics_policy ON offline_replay_policy_metrics(policy_name, decision_type);",
+    "CREATE INDEX IF NOT EXISTS idx_offline_replay_comparisons_run_id ON offline_replay_comparisons(replay_run_id);",
+    "CREATE INDEX IF NOT EXISTS idx_offline_replay_comparisons_policies ON offline_replay_comparisons(baseline_policy, challenger_policy);",
     "CREATE INDEX IF NOT EXISTS idx_model_safety_reports_strategy ON model_safety_reports(strategy_id, created_at);",
     "CREATE INDEX IF NOT EXISTS idx_experiment_assignments_alpha_id ON experiment_assignments(alpha_id);",
     "CREATE INDEX IF NOT EXISTS idx_experiment_assignments_experiment_id ON experiment_assignments(experiment_id);",

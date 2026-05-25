@@ -162,6 +162,14 @@ ROLLBACK_FAILURE_RATE_INCREASE_THRESHOLD = 0.05
 ROLLBACK_WINDOW_SIZE = 100
 OFFLINE_REPLAY_MIN_DECISIONS = 100
 OFFLINE_REPLAY_MAX_DECISIONS = 5000
+OFFLINE_REPLAY_STATUS_PATH = "runtime/status/offline_replay_report.json"
+OFFLINE_REPLAY_MODE = "advisory"
+OFFLINE_REPLAY_AUTO_RUN = False
+OFFLINE_REPLAY_DEFAULT_LIMIT = 1000
+OFFLINE_REPLAY_MIN_OBSERVABLE_SAMPLES = 30
+OFFLINE_REPLAY_BASELINE_POLICY = "legacy"
+OFFLINE_REPLAY_INCLUDE_POLICIES = ["actual_chosen", "legacy", "model_choice", "experiment_choice", "budget_choice"]
+OFFLINE_REPLAY_FAIL_OPEN = True
 SUPPORT_MIN_ACTION_COUNT = 10
 SUPPORT_MIN_CONTEXT_COUNT = 20
 ENABLE_AUTO_PROMOTION = False
@@ -237,6 +245,14 @@ def _as_float(value: Any, default: float) -> float:
         return float(value)
     except (TypeError, ValueError):
         return default
+
+
+def _as_str_list(value: Any, default: list[str]) -> list[str]:
+    if isinstance(value, list):
+        return [str(item) for item in value]
+    if isinstance(value, tuple):
+        return [str(item) for item in value]
+    return list(default)
 
 
 def load_config() -> WorkflowConfig:
@@ -419,6 +435,14 @@ def load_config() -> WorkflowConfig:
         rollback_window_size=max(1, _as_int(raw.get("rollback_window_size"), ROLLBACK_WINDOW_SIZE)),
         offline_replay_min_decisions=max(1, _as_int(raw.get("offline_replay_min_decisions"), OFFLINE_REPLAY_MIN_DECISIONS)),
         offline_replay_max_decisions=max(1, _as_int(raw.get("offline_replay_max_decisions"), OFFLINE_REPLAY_MAX_DECISIONS)),
+        offline_replay_status_path=str(raw.get("offline_replay_status_path") or OFFLINE_REPLAY_STATUS_PATH),
+        offline_replay_mode=str(raw.get("offline_replay_mode") or OFFLINE_REPLAY_MODE),
+        offline_replay_auto_run=_as_bool(raw.get("offline_replay_auto_run"), OFFLINE_REPLAY_AUTO_RUN),
+        offline_replay_default_limit=max(1, _as_int(raw.get("offline_replay_default_limit"), OFFLINE_REPLAY_DEFAULT_LIMIT)),
+        offline_replay_min_observable_samples=max(1, _as_int(raw.get("offline_replay_min_observable_samples"), OFFLINE_REPLAY_MIN_OBSERVABLE_SAMPLES)),
+        offline_replay_baseline_policy=str(raw.get("offline_replay_baseline_policy") or OFFLINE_REPLAY_BASELINE_POLICY),
+        offline_replay_include_policies=_as_str_list(raw.get("offline_replay_include_policies"), OFFLINE_REPLAY_INCLUDE_POLICIES),
+        offline_replay_fail_open=_as_bool(raw.get("offline_replay_fail_open"), OFFLINE_REPLAY_FAIL_OPEN),
         support_min_action_count=max(1, _as_int(raw.get("support_min_action_count"), SUPPORT_MIN_ACTION_COUNT)),
         support_min_context_count=max(1, _as_int(raw.get("support_min_context_count"), SUPPORT_MIN_CONTEXT_COUNT)),
         enable_auto_promotion=_as_bool(raw.get("enable_auto_promotion"), ENABLE_AUTO_PROMOTION),

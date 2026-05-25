@@ -4,9 +4,13 @@ from pathlib import Path
 from typing import Any
 
 from .decision_snapshot import DecisionSnapshotBuilder
+from .replay_dataset import ReplayDatasetLoader
+from .replay_engine import ReplayEngine
+from .replay_reporter import ReplayReporter
+from .replay_repository import ReplayRepository
 from .repository import DecisionSnapshotRepository
 from .reporter import DecisionSnapshotReporter
-from .schema import DecisionOutcome, DecisionSnapshot, utc_now_iso
+from .schema import DecisionOutcome, DecisionSnapshot, ReplayDatasetFilter, ReplayRun, utc_now_iso
 
 
 class DecisionSnapshotService:
@@ -199,3 +203,110 @@ def _pick_bool(data: dict[str, Any], key: str) -> bool | None:
     if text in {"0", "false", "no", "n", "off", "fail", "failed", "failure"}:
         return False
     return None
+
+
+class OfflineReplayService:
+    def __init__(
+        self,
+        *,
+        config: Any | None = None,
+        repository: ReplayRepository | None = None,
+        reporter: ReplayReporter | None = None,
+        dataset_loader: ReplayDatasetLoader | None = None,
+        engine: ReplayEngine | None = None,
+        storage: Any | None = None,
+        db_path: str | Path | None = None,
+        logger: Any | None = None,
+    ) -> None:
+        self.config = config
+        self.logger = logger
+        self.enabled = bool(getattr(config, "enable_offline_replay", False))
+        self.auto_run = bool(getattr(config, "offline_replay_auto_run", False))
+        self.mode = str(getattr(config, "offline_replay_mode", "advisory") or "advisory")
+        self.fail_open = bool(getattr(config, "offline_replay_fail_open", True))
+        self.repository = repository or ReplayRepository(storage=storage, db_path=db_path or getattr(config, "storage_db_path", None), logger=logger)
+        self.dataset_loader = dataset_loader or ReplayDatasetLoader(storage=storage, db_path=db_path or getattr(config, "storage_db_path", None), logger=logger)
+        status_path = getattr(config, "offline_replay_status_path", "runtime/status/offline_replay_report.json")
+        self.reporter = reporter or ReplayReporter(repository=self.repository, status_path=status_path, logger=logger)
+        self.engine = engine or ReplayEngine(
+            dataset_loader=self.dataset_loader,
+            repository=self.repository,
+            reporter=self.reporter,
+            config=config,
+            storage=storage,
+            db_path=str(db_path) if db_path is not None else None,
+            logger=logger,
+        )
+        self.available = True
+        self.warnings: list[str] = []
+
+    def startup_check(self) -> dict[str, Any]:
+        try:
+            result = self.repository.initialize()
+            if not result.get("ok", False):
+                self.available = False
+                self._warn(str(result.get("error") or getattr(self.repository, "last_error", "repository_initialize_failed")))
+                return {"ok": False, "enabled": self.enabled, "available": False, "mode": self.mode, "warnings": list(self.warnings)}
+            report = self.update_report()
+            if self.enabled and self.auto_run:
+                self.run_replay()
+            return {"ok": True, "enabled": self.enabled, "available": True, "mode": self.mode, "auto_run": self.auto_run, "report": report, "warnings": list(self.warnings)}
+        except Exception as exc:
+            self.available = False
+            self._warn(f"startup_check_failed: {exc}")
+            return {"ok": False, "enabled": self.enabled, "available": False, "mode": self.mode, "warnings": list(self.warnings)}
+
+    def run_replay(self, dataset_filter: ReplayDatasetFilter | dict[str, Any] | None = None, policies: list[Any] | None = None, name: str | None = None) -> ReplayRun:
+        if not self.available:
+            return ReplayRun(name=name or "offline_replay", status="failed", completed_at=utc_now_iso(), raw_payload={"error": "offline_replay_unavailable"})
+        try:
+            return self.engine.run_replay(dataset_filter=dataset_filter, policies=policies, name=name)
+        except Exception as exc:
+            self._warn(f"run_replay_failed: {exc}")
+            return ReplayRun(name=name or "offline_replay", status="failed", completed_at=utc_now_iso(), raw_payload={"error": str(exc)})
+
+    def get_latest_report(self) -> dict[str, Any]:
+        path = Path(str(getattr(self.reporter, "status_path", "runtime/status/offline_replay_report.json")))
+        try:
+            if path.exists():
+                import json
+
+                data = json.loads(path.read_text(encoding="utf-8"))
+                return data if isinstance(data, dict) else {}
+        except Exception as exc:
+            self._warn(f"get_latest_report_failed: {exc}")
+        return self.update_report()
+
+    def list_replay_runs(self) -> list[ReplayRun]:
+        return self.repository.list_replay_runs()
+
+    def update_report(self) -> dict[str, Any]:
+        try:
+            return self.reporter.update(enabled=self.enabled, mode=self.mode, warnings=list(self.warnings))
+        except Exception as exc:
+            self._warn(f"update_report_failed: {exc}")
+            return {"ok": False, "enabled": self.enabled, "warnings": list(self.warnings)}
+
+    def get_replay_evidence_summary(self) -> dict[str, Any]:
+        try:
+            runs = self.repository.list_replay_runs(limit=1)
+            if not runs:
+                return {"available": False, "latest_replay_run_id": "", "warnings": list(self.warnings)}
+            run = runs[0]
+            metrics = [item.to_dict() for item in self.repository.list_policy_metrics(run.replay_run_id)]
+            comparisons = [item.to_dict() for item in self.repository.list_comparisons(run.replay_run_id)]
+            return {"available": True, "latest_replay_run_id": run.replay_run_id, "status": run.status, "metrics": metrics, "comparisons": comparisons, "warnings": list(self.warnings)}
+        except Exception as exc:
+            self._warn(f"get_replay_evidence_summary_failed: {exc}")
+            return {"available": False, "warnings": list(self.warnings)}
+
+    def _warn(self, message: str) -> None:
+        self.warnings.append(message)
+        self.warnings = self.warnings[-50:]
+        try:
+            if self.logger is not None:
+                self.logger.warning("offline replay service: %s", message)
+        except Exception:
+            pass
+        if not self.fail_open:
+            self.available = False

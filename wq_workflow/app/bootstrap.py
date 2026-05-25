@@ -54,7 +54,7 @@ def build_app_context(config_path: str | Path | None = None, config: Any | None 
     from wq_workflow.learning.sc.sample_store import SCSampleStore
     from wq_workflow.learning.sc.trainer import SCTrainer
     from wq_workflow.offline.decision_snapshot import DecisionOutcomeRecorder, DecisionSnapshotLogger
-    from wq_workflow.offline.service import DecisionSnapshotService
+    from wq_workflow.offline.service import DecisionSnapshotService, OfflineReplayService
     from wq_workflow.offline.support_checker import SupportChecker
     from wq_workflow.strategy.budget_allocator import BudgetAllocator
     from wq_workflow.strategy.champion_challenger import ModelSafetyGate
@@ -136,6 +136,20 @@ def build_app_context(config_path: str | Path | None = None, config: Any | None 
         except Exception as exc:
             logger.warning("decision snapshot initialization skipped: %s", exc)
             decision_snapshot_service = None
+    offline_replay_service = None
+    try:
+        offline_replay_service = OfflineReplayService(
+            config=config,
+            storage=storage,
+            db_path=getattr(config, "storage_db_path", "runtime/db/workflow.db"),
+            logger=logger,
+        )
+        ctx.offline_replay_service = offline_replay_service
+        ctx.offline_services["replay"] = offline_replay_service
+        ctx.runtime_status.setdefault("offline", {})["replay"] = offline_replay_service.startup_check()
+    except Exception as exc:
+        logger.warning("offline replay service initialization skipped: %s", exc)
+        offline_replay_service = None
     if getattr(ctx, "experiment_service", None) is not None:
         try:
             ctx.experiment_service.config = config
@@ -189,6 +203,7 @@ def build_app_context(config_path: str | Path | None = None, config: Any | None 
         "counterfactual_estimator": counterfactual_estimator,
         "support_checker": support_checker,
         "replay_evaluator": replay_evaluator,
+        "replay": offline_replay_service,
     })
     ctx.learning_services.update({
         "model_registry": model_registry,

@@ -119,6 +119,14 @@ class WorkflowConfig:
     rollback_window_size: int = 100
     offline_replay_min_decisions: int = 100
     offline_replay_max_decisions: int = 5000
+    offline_replay_status_path: str = "runtime/status/offline_replay_report.json"
+    offline_replay_mode: str = "advisory"
+    offline_replay_auto_run: bool = False
+    offline_replay_default_limit: int = 1000
+    offline_replay_min_observable_samples: int = 30
+    offline_replay_baseline_policy: str = "legacy"
+    offline_replay_include_policies: list[str] = field(default_factory=lambda: ["actual_chosen", "legacy", "model_choice", "experiment_choice", "budget_choice"])
+    offline_replay_fail_open: bool = True
     support_min_action_count: int = 10
     support_min_context_count: int = 20
     enable_auto_promotion: bool = False

@@ -101,3 +101,11 @@ Phase 5A adds a standardized Decision Snapshot layer under `wq_workflow/offline/
 The status report is written to `runtime/status/decision_snapshot_status.json`. Recording is fail-open and does not change alpha generation, reward semantics, CandidatePool ranking, Governance veto behavior, Experiment Budget advisory behavior, platform automation, WAIT_RESULT/PARSE_RESULT, SC collection, or the production legacy workflow default path.
 
 This phase does **not** implement Replay Engine, Counterfactual Evaluation, off-policy evaluation, strategy promotion, or hard takeover. Those remain future phases.
+
+## Phase 5B Offline Replay Engine
+
+Phase 5B adds an advisory Offline Replay Engine on top of Phase 5A decision snapshots and outcomes. It loads `decision_snapshots` / `decision_outcomes`, replays `actual_chosen`, `legacy`, `model_choice`, `experiment_choice`, and `budget_choice`, and writes replay runs, policy decisions, metrics, baseline comparisons, and `runtime/status/offline_replay_report.json`.
+
+Replay only uses observed outcomes. If a replay policy selects an action different from the historical chosen action, the engine does not copy the historical outcome onto that unexecuted action; it marks the decision with `insufficient_counterfactual_evidence`. Counterfactual evaluation, off-policy estimation, doubly robust estimation, strategy promotion, and hard takeover remain out of scope for Phase 5B.
+
+Defaults remain conservative: `enable_offline_replay=false`, `offline_replay_auto_run=false`, `offline_replay_mode=advisory`, and `enable_counterfactual_evaluation=false`. Replay failures are fail-open and do not change alpha generation, reward semantics, platform automation, CandidatePool behavior, WAIT_RESULT/PARSE_RESULT, SC collection, Governance hard-decision flags, or the production legacy workflow default path.
