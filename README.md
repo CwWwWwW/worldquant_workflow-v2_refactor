@@ -92,3 +92,28 @@ This phase does **not** change alpha generation, reward semantics, CandidatePool
 Phase 4A adds experiment tracking tables and reports. Phase 4B adds advisory experiment planning and budgeting on top of those summaries. Budget plans protect `legacy_baseline` and `random_exploration`, cap treatment arms, down-weight high-failure/high-SC-risk arms, and up-weight positive-reward/high-quality arms. The budget layer writes SQLite snapshots and the `budgeting` section of `runtime/status/experiment_report.json`.
 
 This layer remains advisory: it does not hard-take over alpha generation, reward semantics, CandidatePool scoring, platform automation, WAIT_RESULT/PARSE_RESULT, SC collection, or the production legacy workflow. Offline Replay, Counterfactual Evaluation, Strategy Portfolio, Observability dashboard, Bayesian optimization, and complex multi-armed bandits are future phases, not Phase 4B.
+
+
+## Phase 5A Decision Snapshot
+
+Phase 5A adds a standardized Decision Snapshot layer under `wq_workflow/offline/`. It records structured snapshots for candidate acceptance, experiment arm selection, budget plan selection, and compatible legacy/shadow decision hooks, then writes true outcomes back by `alpha_id` after results are available.
+
+The status report is written to `runtime/status/decision_snapshot_status.json`. Recording is fail-open and does not change alpha generation, reward semantics, CandidatePool ranking, Governance veto behavior, Experiment Budget advisory behavior, platform automation, WAIT_RESULT/PARSE_RESULT, SC collection, or the production legacy workflow default path.
+
+This phase does **not** implement Replay Engine, Counterfactual Evaluation, off-policy evaluation, strategy promotion, or hard takeover. Those remain future phases.
+
+## Phase 5B Offline Replay Engine
+
+Phase 5B adds an advisory Offline Replay Engine on top of Phase 5A decision snapshots and outcomes. It loads `decision_snapshots` / `decision_outcomes`, replays `actual_chosen`, `legacy`, `model_choice`, `experiment_choice`, and `budget_choice`, and writes replay runs, policy decisions, metrics, baseline comparisons, and `runtime/status/offline_replay_report.json`.
+
+Replay only uses observed outcomes. If a replay policy selects an action different from the historical chosen action, the engine does not copy the historical outcome onto that unexecuted action; it marks the decision with `insufficient_counterfactual_evidence`. Counterfactual evaluation, off-policy estimation, doubly robust estimation, strategy promotion, and hard takeover remain out of scope for Phase 5B.
+
+Defaults remain conservative: `enable_offline_replay=false`, `offline_replay_auto_run=false`, `offline_replay_mode=advisory`, and `enable_counterfactual_evaluation=false`. Replay failures are fail-open and do not change alpha generation, reward semantics, platform automation, CandidatePool behavior, WAIT_RESULT/PARSE_RESULT, SC collection, Governance hard-decision flags, or the production legacy workflow default path.
+
+## Phase 5C Conservative Counterfactual Evaluator
+
+Phase 5C adds an advisory Counterfactual Evaluator under `wq_workflow/offline/`. It consumes Phase 5A decision snapshots/outcomes and Phase 5B replay policy decisions marked `insufficient_counterfactual_evidence`, then uses lightweight nearest-neighbor matching against observed historical outcomes to produce separate counterfactual requests, evidence, estimates, summaries, and `runtime/status/counterfactual_report.json`.
+
+All counterfactual estimates are marked `estimated_not_observed`. Evidence must come from records with real observed outcomes; insufficient support returns `insufficient_evidence`, and high-risk estimates are flagged rather than promoted. Defaults remain conservative: `enable_counterfactual_evaluation=false`, `counterfactual_auto_run=false`, and `counterfactual_mode=advisory`.
+
+This phase does **not** treat estimates as actual outcomes, overwrite `decision_outcomes`, overwrite replay observed outcomes, change reward semantics, change CandidatePool ranking, modify Governance hard-decision flags, promote strategies, perform hard takeover, run doubly robust/off-policy evaluation, train models, alter alpha generation, or change platform automation / WAIT_RESULT / PARSE_RESULT / SC collection.

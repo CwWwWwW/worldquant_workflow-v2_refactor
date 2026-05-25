@@ -54,8 +54,7 @@ def build_app_context(config_path: str | Path | None = None, config: Any | None 
     from wq_workflow.learning.sc.sample_store import SCSampleStore
     from wq_workflow.learning.sc.trainer import SCTrainer
     from wq_workflow.offline.decision_snapshot import DecisionOutcomeRecorder, DecisionSnapshotLogger
-    from wq_workflow.offline.counterfactual import CounterfactualEstimator
-    from wq_workflow.offline.replay import OfflineReplayEvaluator
+    from wq_workflow.offline.service import CounterfactualService, DecisionSnapshotService, OfflineReplayService
     from wq_workflow.offline.support_checker import SupportChecker
     from wq_workflow.strategy.budget_allocator import BudgetAllocator
     from wq_workflow.strategy.champion_challenger import ModelSafetyGate
@@ -122,10 +121,54 @@ def build_app_context(config_path: str | Path | None = None, config: Any | None 
         ctx.runtime_status["config_safety_gate"] = guard_result
     except Exception as exc:
         logger.warning("config safety gate skipped: %s", exc)
+    decision_snapshot_service = None
+    if bool(getattr(config, "enable_decision_snapshots", True)):
+        try:
+            decision_snapshot_service = DecisionSnapshotService(
+                config=config,
+                storage=storage,
+                db_path=getattr(config, "storage_db_path", "runtime/db/workflow.db"),
+                logger=logger,
+            )
+            ctx.decision_snapshot_service = decision_snapshot_service
+            ctx.offline_services["decision_snapshot"] = decision_snapshot_service
+            ctx.runtime_status["offline"] = {"decision_snapshot": decision_snapshot_service.startup_check()}
+        except Exception as exc:
+            logger.warning("decision snapshot initialization skipped: %s", exc)
+            decision_snapshot_service = None
+    offline_replay_service = None
+    try:
+        offline_replay_service = OfflineReplayService(
+            config=config,
+            storage=storage,
+            db_path=getattr(config, "storage_db_path", "runtime/db/workflow.db"),
+            logger=logger,
+        )
+        ctx.offline_replay_service = offline_replay_service
+        ctx.offline_services["replay"] = offline_replay_service
+        ctx.runtime_status.setdefault("offline", {})["replay"] = offline_replay_service.startup_check()
+    except Exception as exc:
+        logger.warning("offline replay service initialization skipped: %s", exc)
+        offline_replay_service = None
+    counterfactual_service = None
+    try:
+        counterfactual_service = CounterfactualService(
+            config=config,
+            storage=storage,
+            db_path=getattr(config, "storage_db_path", "runtime/db/workflow.db"),
+            logger=logger,
+        )
+        ctx.counterfactual_service = counterfactual_service
+        ctx.offline_services["counterfactual"] = counterfactual_service
+        ctx.runtime_status.setdefault("offline", {})["counterfactual"] = counterfactual_service.startup_check()
+    except Exception as exc:
+        logger.warning("counterfactual service initialization skipped: %s", exc)
+        counterfactual_service = None
     if getattr(ctx, "experiment_service", None) is not None:
         try:
             ctx.experiment_service.config = config
             ctx.experiment_service.governance_service = governance_service
+            ctx.experiment_service.decision_snapshot_service = decision_snapshot_service
             if getattr(config, "enable_experiment_budgeting", True) or getattr(config, "enable_experiment_design", True):
                 ctx.experiment_service.generate_budget_plan(total_budget_hint=getattr(config, "experiment_budget_total_hint", None))
         except Exception as exc:
@@ -134,9 +177,23 @@ def build_app_context(config_path: str | Path | None = None, config: Any | None 
     prediction_audit = PredictionAuditService(repository=repositories.ml, storage=storage, logger=logger)
     decision_logger = DecisionSnapshotLogger(repository=repositories.decision, storage=storage, logger=logger)
     decision_outcome = DecisionOutcomeRecorder(repository=repositories.decision, storage=storage, logger=logger)
-    counterfactual_estimator = CounterfactualEstimator(repositories, config, logger)
     support_checker = SupportChecker(repositories, config, logger)
-    replay_evaluator = OfflineReplayEvaluator(repositories, model_registry, config, logger)
+    replay_evaluator = None
+    counterfactual_estimator = None
+    if bool(getattr(config, "enable_offline_replay", False)):
+        try:
+            from wq_workflow.offline.replay import OfflineReplayEvaluator
+
+            replay_evaluator = OfflineReplayEvaluator(repositories, model_registry, config, logger)
+        except Exception as exc:
+            logger.warning("offline replay initialization skipped: %s", exc)
+    if bool(getattr(config, "enable_counterfactual_evaluation", False)):
+        try:
+            from wq_workflow.offline.counterfactual import CounterfactualEstimator
+
+            counterfactual_estimator = CounterfactualEstimator(repositories, config, logger)
+        except Exception as exc:
+            logger.warning("counterfactual initialization skipped: %s", exc)
     sc_predictor = SCPredictor(model_registry=model_registry, audit_logger=audit_logger, config=config)
     parent_predictor = ParentPredictor(model_registry=model_registry, audit_logger=audit_logger, config=config)
     policy_predictor = PolicyPredictor(model_registry=model_registry, audit_logger=audit_logger, config=config)
@@ -156,9 +213,12 @@ def build_app_context(config_path: str | Path | None = None, config: Any | None 
     ctx.offline_services.update({
         "decision_snapshot_logger": decision_logger,
         "decision_outcome_recorder": decision_outcome,
+        "decision_snapshot": decision_snapshot_service,
         "counterfactual_estimator": counterfactual_estimator,
+        "counterfactual": counterfactual_service,
         "support_checker": support_checker,
         "replay_evaluator": replay_evaluator,
+        "replay": offline_replay_service,
     })
     ctx.learning_services.update({
         "model_registry": model_registry,

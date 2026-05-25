@@ -22,6 +22,7 @@ class ExperimentService:
         storage: Any | None = None,
         db_path: Any | None = None,
         logger: Any | None = None,
+        decision_snapshot_service: Any | None = None,
     ) -> None:
         self.config = config
         self.logger = logger
@@ -29,6 +30,7 @@ class ExperimentService:
         self.planner = planner or DefaultExperimentPlanner(config=config)
         self.budget_allocator = ExperimentBudgetAllocator(config=config, logger=logger)
         self.repository = repository or ExperimentRepository(storage=storage, db_path=db_path, logger=logger)
+        self.decision_snapshot_service = decision_snapshot_service
         status_path = getattr(config, "experiment_status_path", "runtime/status/experiment_report.json")
         self.reporter = reporter or ExperimentReporter(repository=self.repository, status_path=status_path, logger=logger)
         self.available = True
@@ -100,6 +102,22 @@ class ExperimentService:
             if not result.get("ok", False):
                 self._warn(str(result.get("error") or "save_assignment_failed"))
                 return None
+            self._record_decision_snapshot(
+                "experiment_arm_selection",
+                {
+                    **data,
+                    "alpha_id": assignment.alpha_id,
+                    "experiment_id": assignment.experiment_id,
+                    "arm_id": assignment.arm_id,
+                    "budget_plan_id": data.get("budget_plan_id"),
+                    "available_actions": [arm_item.to_dict() for arm_item in (plan.arms or [])],
+                    "chosen_action": {"action_id": assignment.arm_id, "action_type": "experiment_arm", "name": assignment.arm_id, "source": "experiment"},
+                    "experiment_choice": {"action_id": data.get("budget_recommended_arm_id") or assignment.arm_id, "action_type": "experiment_arm", "name": data.get("budget_recommended_arm_id") or assignment.arm_id, "source": "experiment"},
+                    "legacy_choice": {"action_id": "legacy_baseline", "action_type": "experiment_arm", "name": "legacy_baseline", "source": "legacy"},
+                    "context": data,
+                    "raw_payload": {"assignment": assignment.to_dict(), "recommendation": recommendation.to_dict() if hasattr(recommendation, "to_dict") else None},
+                },
+            )
             return assignment
         except Exception as exc:
             self._warn(f"assign_candidate_failed: {exc}")
@@ -146,6 +164,24 @@ class ExperimentService:
                 self._warn(str(saved.get("error") or "save_result_failed"))
                 return None
             self.repository.update_summary(result.experiment_id, result.arm_id)
+            self._record_decision_outcome(
+                alpha_id,
+                {
+                    "success": result.success,
+                    "reward": result.reward,
+                    "sharpe": result.sharpe,
+                    "fitness": result.fitness,
+                    "returns": result.returns,
+                    "turnover": result.turnover,
+                    "drawdown": result.drawdown,
+                    "margin": result.margin,
+                    "platform_sc_status": result.platform_sc_status,
+                    "platform_sc_abs_max": result.platform_sc_abs_max,
+                    "quality_passed": result.quality_passed,
+                    "failure_type": result.failure_type,
+                    "raw_payload": {"experiment_result": result.to_dict()},
+                },
+            )
             return result
         except Exception as exc:
             self._warn(f"record_result_failed: {exc}")
@@ -176,6 +212,19 @@ class ExperimentService:
             snapshot_saved = self.repository.save_budget_snapshot(snapshot)
             if not snapshot_saved.get("ok", False):
                 self._warn(str(snapshot_saved.get("error") or "save_budget_snapshot_failed"))
+            self._record_decision_snapshot(
+                "budget_plan_selection",
+                {
+                    "experiment_id": budget_plan.experiment_id,
+                    "budget_plan_id": budget_plan.budget_plan_id,
+                    "available_actions": [allocation.to_dict() for allocation in budget_plan.allocations],
+                    "chosen_action": {"action_id": budget_plan.budget_plan_id, "action_type": "budget_plan", "name": budget_plan.budget_plan_id, "source": "experiment"},
+                    "experiment_choice": {"action_id": budget_plan.budget_plan_id, "action_type": "budget_plan", "name": budget_plan.budget_plan_id, "source": "experiment"},
+                    "governance_decision": "advisory_allowed" if all(allocation.governance_allowed for allocation in budget_plan.allocations) else "partial_veto_or_block",
+                    "context": {"total_budget_hint": total_budget_hint, "mode": getattr(self.config, "experiment_budget_mode", "advisory")},
+                    "raw_payload": {"budget_plan": budget_plan.to_dict(), "tracking_only": True},
+                },
+            )
             self.update_report()
             return budget_plan
         except Exception as exc:
@@ -228,6 +277,25 @@ class ExperimentService:
         except Exception as exc:
             self._warn(f"update_report_failed: {exc}")
             return {"ok": False, "error": str(exc), "warnings": list(self.warnings)}
+
+
+    def _record_decision_snapshot(self, decision_type: str, context: dict[str, Any]) -> None:
+        service = getattr(self, "decision_snapshot_service", None)
+        if service is None:
+            return
+        try:
+            service.record_decision(decision_type, context)
+        except Exception as exc:
+            self._warn(f"decision_snapshot_record_failed: {exc}")
+
+    def _record_decision_outcome(self, alpha_id: str, context: dict[str, Any]) -> None:
+        service = getattr(self, "decision_snapshot_service", None)
+        if service is None:
+            return
+        try:
+            service.record_outcome(alpha_id, context)
+        except Exception as exc:
+            self._warn(f"decision_snapshot_outcome_failed: {exc}")
 
     def _ensure_arm(self, plan: ExperimentPlan, arm: ExperimentArm) -> None:
         if any(existing.arm_id == arm.arm_id for existing in plan.arms):

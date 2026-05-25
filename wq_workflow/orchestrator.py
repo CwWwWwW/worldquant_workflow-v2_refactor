@@ -80,7 +80,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-async def main(argv: list[str] | None = None, *, experiment_service: Any | None = None) -> int:
+async def main(argv: list[str] | None = None, *, experiment_service: Any | None = None, decision_snapshot_service: Any | None = None) -> int:
     args = parse_args(argv)
     ensure_runtime_files()
     setup_logging()
@@ -106,6 +106,24 @@ async def main(argv: list[str] | None = None, *, experiment_service: Any | None 
         except Exception:
             logging.info("Experiment tracking unavailable; continuing legacy workflow", exc_info=True)
             experiment_service = None
+    if decision_snapshot_service is None and bool(getattr(config, "enable_decision_snapshots", True)):
+        try:
+            from .offline.service import DecisionSnapshotService
+
+            decision_snapshot_service = DecisionSnapshotService(
+                config=config,
+                db_path=getattr(config, "storage_db_path", "runtime/db/workflow.db"),
+                logger=logging.getLogger("wq_workflow.offline.decision_snapshot"),
+            )
+            decision_snapshot_service.startup_check()
+        except Exception:
+            logging.info("Decision snapshot service unavailable; continuing legacy workflow", exc_info=True)
+            decision_snapshot_service = None
+    if experiment_service is not None:
+        try:
+            experiment_service.decision_snapshot_service = decision_snapshot_service
+        except Exception:
+            pass
 
     ds = DeepSeekClient(config)
     templates = await split_and_store_templates(
@@ -135,7 +153,7 @@ async def main(argv: list[str] | None = None, *, experiment_service: Any | None 
             await supervisor.close_session(bootstrap_session, persist_storage=True)
         for item in templates:
             try:
-                success = await process_one_template(supervisor, ds, config, item, experiment_service=experiment_service)
+                success = await process_one_template(supervisor, ds, config, item, experiment_service=experiment_service, decision_snapshot_service=decision_snapshot_service)
                 successes.append(success)
                 print_success(success)
             except TemplateFailedError as exc:
@@ -176,7 +194,27 @@ def maybe_record_experiment_result(experiment_service: Any | None, alpha_id: str
         return None
 
 
-async def process_one_template(supervisor: BrowserSupervisor, ds: DeepSeekClient, config, item: TemplateItem, *, experiment_service: Any | None = None) -> TemplateSuccess:
+def maybe_record_decision_snapshot(decision_snapshot_service: Any | None, decision_type: str, context: dict[str, Any]) -> Any | None:
+    if decision_snapshot_service is None:
+        return None
+    try:
+        return decision_snapshot_service.record_decision(decision_type, context)
+    except Exception:
+        logging.info("Decision snapshot recording skipped", exc_info=True)
+        return None
+
+
+def maybe_record_decision_outcome(decision_snapshot_service: Any | None, alpha_id: str, outcome_context: dict[str, Any]) -> list[Any]:
+    if decision_snapshot_service is None:
+        return []
+    try:
+        return decision_snapshot_service.record_outcome(alpha_id, outcome_context)
+    except Exception:
+        logging.info("Decision snapshot outcome skipped", exc_info=True)
+        return []
+
+
+async def process_one_template(supervisor: BrowserSupervisor, ds: DeepSeekClient, config, item: TemplateItem, *, experiment_service: Any | None = None, decision_snapshot_service: Any | None = None) -> TemplateSuccess:
     logging.info("开始处理模板：%s file=%s source=%s", item.index, item.path, item.source)
     code, raw = await ds.prepare_alpha(item.code)
     code = ensure_code(code, "DeepSeek 初始优化未返回可用代码")
@@ -406,17 +444,32 @@ async def process_one_template(supervisor: BrowserSupervisor, ds: DeepSeekClient
                 logging.info("EVOLUTION_SIMULATOR_SKIP_LIMIT_REACHED alpha=%s limit=%s", alpha_name, consecutive_simulator_skips)
             continue
         consecutive_simulator_skips = 0
-        maybe_assign_experiment_candidate(
-            experiment_service,
+        candidate_context = {
+            "alpha_id": alpha_id,
+            "expression": code,
+            "template_name": item.path or item.source,
+            "template_family": item.source or item.path,
+            "mutation_type": str((pending_mutation or {}).get("mutation_type") or candidate_source),
+            "candidate_source": candidate_source,
+            "behavior_family": str((pending_mutation or {}).get("behavior_family") or ""),
+            "raw_pending_mutation": pending_mutation or {},
+        }
+        assignment = maybe_assign_experiment_candidate(experiment_service, candidate_context)
+        maybe_record_decision_snapshot(
+            decision_snapshot_service,
+            "candidate_acceptance",
             {
-                "alpha_id": alpha_id,
-                "expression": code,
-                "template_name": item.path or item.source,
-                "template_family": item.source or item.path,
-                "mutation_type": str((pending_mutation or {}).get("mutation_type") or candidate_source),
-                "candidate_source": candidate_source,
-                "behavior_family": str((pending_mutation or {}).get("behavior_family") or ""),
-                "raw_pending_mutation": pending_mutation or {},
+                **candidate_context,
+                "experiment_id": getattr(assignment, "experiment_id", None),
+                "arm_id": getattr(assignment, "arm_id", None),
+                "chosen_action": {"action_id": "submit_backtest", "action_type": "candidate_acceptance", "name": "submit_backtest", "source": "legacy"},
+                "legacy_choice": {"action_id": "submit_backtest", "action_type": "candidate_acceptance", "name": "submit_backtest", "source": "legacy"},
+                "available_actions": [
+                    {"action_id": "submit_backtest", "action_type": "candidate_acceptance", "name": "submit_backtest", "source": "legacy"},
+                    {"action_id": "skip_candidate", "action_type": "candidate_acceptance", "name": "skip_candidate", "source": "unknown"},
+                ],
+                "context": candidate_context,
+                "raw_payload": {"experiment_assignment": assignment.to_dict() if hasattr(assignment, "to_dict") else None, "tracking_only": True},
             },
         )
         result = await run_platform_backtest_attempt(
@@ -492,20 +545,19 @@ async def process_one_template(supervisor: BrowserSupervisor, ds: DeepSeekClient
                 continue
             automation_retry_count = 0
             platform_error_key = normalize_error_key(result.error.text)
-            maybe_record_experiment_result(
-                experiment_service,
-                alpha_id,
-                {
-                    "success": False,
-                    "reward": -0.5,
-                    "metrics": result.metrics if isinstance(result.metrics, dict) else {},
-                    "quality_passed": False,
-                    "platform_sc": result.platform_sc if isinstance(result.platform_sc, dict) else {},
-                    "platform_sc_status": (result.platform_sc or {}).get("status") if isinstance(result.platform_sc, dict) else None,
-                    "failure_type": classify_failure(result.error.text),
-                    "failure_reason": result.error.text,
-                },
-            )
+            failure_context = {
+                "success": False,
+                "reward": -0.5,
+                "metrics": result.metrics if isinstance(result.metrics, dict) else {},
+                "quality_passed": False,
+                "platform_sc": result.platform_sc if isinstance(result.platform_sc, dict) else {},
+                "platform_sc_status": (result.platform_sc or {}).get("status") if isinstance(result.platform_sc, dict) else None,
+                "platform_sc_abs_max": (result.platform_sc or {}).get("abs_max") if isinstance(result.platform_sc, dict) else None,
+                "failure_type": classify_failure(result.error.text),
+                "failure_reason": result.error.text,
+            }
+            maybe_record_experiment_result(experiment_service, alpha_id, failure_context)
+            maybe_record_decision_outcome(decision_snapshot_service, alpha_id, failure_context)
             if is_syntax_error_text(result.error.text):
                 syntax_error_count += 1
                 fail_if_syntax_exhausted(item, alpha_name, code, result.error.text, syntax_error_count, max_syntax_errors, result.screenshot)
@@ -712,19 +764,19 @@ async def process_one_template(supervisor: BrowserSupervisor, ds: DeepSeekClient
             )
         except Exception:
             logging.info("Evolution after_backtest call skipped", exc_info=True)
-        maybe_record_experiment_result(
-            experiment_service,
-            alpha_id,
-            {
-                "success": bool(quality.passed or result.template_success),
-                "reward": mutation_reward,
-                "metrics": result.metrics if isinstance(result.metrics, dict) else {},
-                "quality": quality.to_dict() if hasattr(quality, "to_dict") else {},
-                "quality_passed": bool(quality.passed),
-                "platform_sc": result.platform_sc if isinstance(result.platform_sc, dict) else {},
-                "failure_type": "" if bool(quality.passed or result.template_success) else "quality_failed",
-            },
-        )
+        outcome_context = {
+            "success": bool(quality.passed or result.template_success),
+            "reward": mutation_reward,
+            "metrics": result.metrics if isinstance(result.metrics, dict) else {},
+            "quality": quality.to_dict() if hasattr(quality, "to_dict") else {},
+            "quality_passed": bool(quality.passed),
+            "platform_sc": result.platform_sc if isinstance(result.platform_sc, dict) else {},
+            "platform_sc_status": (result.platform_sc or {}).get("status") if isinstance(result.platform_sc, dict) else None,
+            "platform_sc_abs_max": (result.platform_sc or {}).get("abs_max") if isinstance(result.platform_sc, dict) else None,
+            "failure_type": "" if bool(quality.passed or result.template_success) else "quality_failed",
+        }
+        maybe_record_experiment_result(experiment_service, alpha_id, outcome_context)
+        maybe_record_decision_outcome(decision_snapshot_service, alpha_id, outcome_context)
         await maybe_distill_research_insights(insight_manager, ds, config)
         maybe_refresh_dashboard_snapshot(force=True)
         if pending_mutation:
