@@ -1,4 +1,9 @@
-from .budget_allocator import BudgetAllocator
+from .budget_allocator import BudgetAllocator, StrategyBudgetAllocator
+from .budget_policy import StrategyBudgetPolicy
+from .budget_repository import StrategyBudgetRepository
+from .budget_reporter import StrategyBudgetReporter
+from .budget_schema import StrategyBudgetAllocation, StrategyBudgetPlan, StrategyBudgetReport, StrategyBudgetRule
+from .budget_service import StrategyBudgetService
 from .champion_challenger import ModelSafetyGate
 from .evidence_loader import StrategyEvidenceLoader
 from .performance_tracker import PerformanceTracker
@@ -29,6 +34,15 @@ __all__ = [
     "RollbackPolicy",
     "StrategyEvidence",
     "StrategyEvidenceLoader",
+    "StrategyBudgetAllocation",
+    "StrategyBudgetAllocator",
+    "StrategyBudgetPlan",
+    "StrategyBudgetPolicy",
+    "StrategyBudgetReport",
+    "StrategyBudgetReporter",
+    "StrategyBudgetRepository",
+    "StrategyBudgetRule",
+    "StrategyBudgetService",
     "StrategyPortfolio",
     "StrategyPortfolioReport",
     "StrategyPortfolioRepository",

@@ -128,4 +128,14 @@ Recommendations are advisory only. This phase does **not** implement Champion/Ch
 
 Phase 6B introduces an advisory-only Strategy Portfolio layer. It reads Phase 6A strategy scores plus risk evidence and writes `runtime/status/strategy_portfolio_report.json` with conservative `disabled` / `shadow` / `challenger` / `limited_active` / `champion` state recommendations.
 
-The default champion is `legacy_baseline`. This phase does not perform strategy budget allocation, automatic budget apply, hard takeover, true champion replacement, promotion execution, rollback execution, model training, reward changes, CandidatePool changes, platform automation changes, or Governance hard-flag changes. Legacy portfolio/champion/budget modules remain available but isolated; budget allocator is reserved for a later 6C phase.
+The default champion is `legacy_baseline`. This phase does not perform strategy budget allocation, automatic budget apply, hard takeover, true champion replacement, promotion execution, rollback execution, model training, reward changes, CandidatePool changes, platform automation changes, or Governance hard-flag changes. Legacy portfolio/champion/budget modules remain available but isolated.
+
+## Phase 6C Strategy Budget Allocator
+
+Phase 6C adds an advisory-only Strategy Budget Allocator under `wq_workflow/strategy/`. It reads Phase 6B portfolio states and emits conservative budget recommendations to `runtime/status/strategy_budget_report.json`.
+
+The allocator is report-only: every allocation has `auto_apply_allowed=false`; `strategy_budget_auto_apply=false` and `strategy_budget_allocator_auto_apply=false` by default. It does not change real backtest submission logic, alpha generation, parent selection, mutation policy, reward semantics, CandidatePool ranking, platform automation, WAIT_RESULT/PARSE_RESULT, SC collection, or Governance hard-decision flags.
+
+Default policy keeps `legacy_baseline` at a minimum floor of `0.40` and `random_exploration` at a minimum floor of `0.05`. Disabled, governance-blocked, and blocked-risk strategies are reported with zero advisory budget. Shadow, challenger, and limited-active states receive observe/test/scale-limited caps; high-risk, high-SC-risk, and insufficient-evidence strategies are capped conservatively. Ratios are normalized for dashboard/Governance visibility only and are never applied to the workflow scheduler.
+
+Legacy `portfolio`, `champion_challenger`, `budget_allocator`, `promotion`, and `rollback` modules remain import-compatible and isolated. Promotion/rollback tools remain manual and are not called by Phase 6C. The refactored pipeline remains non-production-official by default until a later explicit phase.
