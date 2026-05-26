@@ -156,3 +156,19 @@ Phase 7C adds an explain-only layer on top of Phase 7A metrics and Phase 7B advi
 This phase is report-only. It does not send external notifications, perform automatic remediation, stop or roll back the workflow, change alpha generation, parent selection, mutation policy, reward semantics, CandidatePool state, platform automation, WAIT_RESULT/PARSE_RESULT, SC collection, Governance hard-decision flags, or Strategy budget allocation. It does not execute promotion or rollback and does not treat counterfactual estimates as actual outcomes.
 
 Defaults remain conservative: `enable_run_explainability=false`, `observability_explainability_auto_run=false`, `observability_explainability_mode=explain_only`, and `observability_explanation_auto_action=false`. After Phase 7A/7B/7C are complete, merging to `main` should wait for explicit user instruction.
+
+## Final readonly dashboard / CLI status
+
+Use the final readonly status CLI for a compact synchronized view across
+runtime status JSON, `workflow.db` summary tables, and recent log tails:
+
+```bash
+python tools/show_final_status.py
+python tools/show_final_status.py --json
+python tools/show_final_status.py --verbose --limit 20
+python tools/show_final_status.py --no-db --no-logs
+```
+
+The status reader is fail-open and read-only: missing, stale, corrupt, or locked
+sources become warnings; it does not run collectors, diagnostics, Playwright,
+promotion/rollback, Strategy budget apply, ML training, or workflow actions.

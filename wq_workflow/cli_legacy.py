@@ -452,25 +452,12 @@ def init_command() -> int:
 
 
 def status_command() -> int:
-    ensure_runtime_files()
-    pid = read_pid()
-    if pid and is_process_running(pid):
-        print(f"工作流状态：运行中，PID {pid}")
-    elif pid:
-        print(f"工作流状态：PID 文件存在但进程已结束，PID {pid}")
-        clear_pid_file(force=True)
-        print("已清理过期状态文件。")
-    else:
-        print("工作流状态：未运行")
+    from wq_workflow.dashboard.cli_formatter import CLIStatusFormatter
+    from wq_workflow.dashboard.status_aggregator import DashboardStatusAggregator
 
-    last_split_count = len(read_last_split_template_items())
-    split_count = len(read_split_template_items())
-    print(f"主日志：{WORKFLOW_LOG_FILE}")
-    print(f"迭代日志：{ITERATION_LOG_FILE}")
-    print(f"收藏日志：{FAVORITE_LOG_FILE}")
-    print(f"分割清单：{SPLIT_MANIFEST_FILE}")
-    print(f"模板目录：{TEMPLATE_DIR}（上次分割 {last_split_count} 个；目录可用 {split_count} 个）")
-    print("结束流程：人工关闭对应 CLI 窗口/进程。")
+    snapshot = DashboardStatusAggregator().build_snapshot()
+    print(CLIStatusFormatter().format_snapshot(snapshot, compact=True, limit=8))
+    print("结束流程：人工关闭对应 CLI 窗口/进程；status 命令只读，不会清理或修改运行状态。")
     return 0
 
 

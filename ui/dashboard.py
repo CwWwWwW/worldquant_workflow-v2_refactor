@@ -1,15 +1,10 @@
 from __future__ import annotations
 
 from textual.app import App, ComposeResult
-from textual.containers import Horizontal, Vertical
-from textual.widgets import Footer, Header, Input
+from textual.widgets import Footer, Header, Static
 
-from .state_collector import StateCollector, log_dashboard_error
-from .widgets.logs_panel import LogsPanel
-from .widgets.migration_panel import MigrationPanel
-from .widgets.population_panel import PopulationPanel
-from .widgets.status_bar import StatusBar
-from .widgets.worker_panel import WorkerPanel
+from wq_workflow.dashboard.cli_formatter import CLIStatusFormatter
+from wq_workflow.dashboard.status_aggregator import DashboardStatusAggregator
 
 
 class WorkflowDashboard(App):
@@ -18,42 +13,11 @@ class WorkflowDashboard(App):
         layout: vertical;
     }
 
-    #status {
-        height: 3;
+    #final-status {
+        height: 1fr;
         padding: 1 2;
         background: $surface;
-    }
-
-    #main {
-        height: 1fr;
-    }
-
-    #workers {
-        width: 58%;
-        height: 100%;
         border: solid $primary;
-        padding: 1;
-    }
-
-    #side {
-        width: 42%;
-        height: 100%;
-    }
-
-    #population, #migration {
-        height: 1fr;
-        border: solid $primary;
-        padding: 1;
-    }
-
-    #filter {
-        height: 3;
-    }
-
-    #logs {
-        height: 16;
-        border: solid $primary;
-        padding: 1;
     }
     """
 
@@ -64,43 +28,28 @@ class WorkflowDashboard(App):
 
     def __init__(self) -> None:
         super().__init__()
-        self.collector = StateCollector()
-        self.filter_text = ""
+        self.aggregator = DashboardStatusAggregator()
+        self.formatter = CLIStatusFormatter()
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
-        yield StatusBar(id="status")
-        with Horizontal(id="main"):
-            yield WorkerPanel(id="workers")
-            with Vertical(id="side"):
-                yield PopulationPanel(id="population")
-                yield MigrationPanel(id="migration")
-        yield Input(placeholder="Filter logs by text/source...", id="filter")
-        yield LogsPanel(id="logs")
+        yield Static("Loading readonly dashboard snapshot...", id="final-status")
         yield Footer()
 
     def on_mount(self) -> None:
-        self.set_interval(1.0, self.refresh_snapshot)
-        self.refresh_snapshot()
-
-    def on_input_changed(self, event: Input.Changed) -> None:
-        self.filter_text = event.value.strip()
+        self.set_interval(10.0, self.refresh_snapshot)
         self.refresh_snapshot()
 
     def refresh_snapshot(self) -> None:
         try:
-            snapshot = self.collector.collect(log_filter=self.filter_text)
-            self.query_one(StatusBar).update_status(snapshot.workflow)
-            self.query_one(WorkerPanel).update_workers(snapshot.workers)
-            self.query_one(PopulationPanel).update_population(snapshot.population)
-            self.query_one(MigrationPanel).update_migration(snapshot.migration)
-            self.query_one(LogsPanel).update_logs(
-                snapshot.logs,
-                filter_text=self.filter_text,
-                log_manager=snapshot.log_manager,
+            snapshot = self.aggregator.build_snapshot()
+            self.query_one("#final-status", Static).update(
+                self.formatter.format_snapshot(snapshot, compact=False, limit=12)
             )
         except Exception as exc:
-            log_dashboard_error(f"refresh_failed: {exc}")
+            self.query_one("#final-status", Static).update(
+                f"Dashboard refresh failed (readonly): {type(exc).__name__}: {exc}"
+            )
 
 
 def main() -> None:
