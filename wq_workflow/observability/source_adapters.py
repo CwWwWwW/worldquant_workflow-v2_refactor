@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import io
 import sqlite3
 import shutil
 from pathlib import Path
@@ -15,6 +16,46 @@ from .utils import clean_dict, safe_float_value, safe_int_value, utc_now_iso
 def _resolve(root: Path, value: str | Path | None, default: str) -> Path:
     candidate = Path(value or default)
     return candidate if candidate.is_absolute() else root / candidate
+
+
+def read_text_tail(path: Path, max_bytes: int = 262_144) -> str:
+    if not path.exists():
+        return ""
+    try:
+        with path.open("rb") as fh:
+            fh.seek(0, 2)
+            size = fh.tell()
+            fh.seek(max(0, size - max(1, int(max_bytes))))
+            data = fh.read()
+        text = data.decode("utf-8-sig", errors="replace")
+        if size > max(1, int(max_bytes)):
+            first_newline = text.find("\n")
+            if first_newline >= 0:
+                text = text[first_newline + 1 :]
+        return text
+    except Exception:
+        return ""
+
+
+def _read_csv_tail(path: Path, *, limit: int = 100, max_bytes: int = 262_144) -> list[dict[str, Any]]:
+    if not path.exists():
+        return []
+    try:
+        with path.open("rb") as fh:
+            header = fh.readline().decode("utf-8-sig", errors="replace")
+        tail = read_text_tail(path, max_bytes=max_bytes)
+        if not tail:
+            return []
+        header_cols = next(csv.reader([header.strip()])) if header.strip() else []
+        tail_lines = tail.splitlines()
+        if header_cols and tail_lines:
+            first_tail_cols = next(csv.reader([tail_lines[0]]), []) if tail_lines[0].strip() else []
+            if first_tail_cols != header_cols:
+                tail = header.rstrip("\r\n") + "\n" + "\n".join(tail_lines)
+        rows = list(csv.DictReader(io.StringIO(tail)))
+        return [dict(row) for row in rows[-max(1, int(limit)):] if isinstance(row, dict)]
+    except Exception:
+        return []
 
 
 class BaseSourceAdapter:
@@ -40,7 +81,7 @@ class BaseSourceAdapter:
         if not self.db_path.exists():
             return None, [f"workflow_db_missing:{self.db_path}"]
         try:
-            conn = sqlite3.connect(f"file:{self.db_path.as_posix()}?mode=ro", uri=True)
+            conn = sqlite3.connect(f"file:{self.db_path.as_posix()}?mode=ro", uri=True, timeout=1.0)
             conn.row_factory = sqlite3.Row
             return conn, []
         except Exception as exc:
@@ -101,8 +142,7 @@ class WorkflowStatusAdapter(BaseSourceAdapter):
         iter_path = self.root / "iteration_log.csv"
         if iter_path.exists():
             try:
-                with iter_path.open("r", encoding="utf-8-sig", newline="") as fh:
-                    rows = list(csv.DictReader(fh))[-100:]
+                rows = _read_csv_tail(iter_path, limit=100, max_bytes=262_144)
                 success = sum(1 for row in rows if str(row.get("success", "")).lower() in {"1", "true", "yes", "ok", "success"})
                 metrics.append(self._metric("workflow.recent_success_count", success))
                 metrics.append(self._metric("workflow.recent_failure_count", max(0, len(rows) - success)))

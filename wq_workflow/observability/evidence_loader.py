@@ -21,10 +21,12 @@ class ExplanationEvidenceLoader:
             self.db_path = self.root / self.db_path
         self.logger = logger
         self.warnings: list[str] = []
+        self._warning_keys: set[str] = set()
         self.limit = int(getattr(config, "observability_explanation_recent_limit", 1000) or 1000)
 
     def load_all_evidence(self) -> list[ExplanationEvidence]:
         self.warnings = []
+        self._warning_keys = set()
         loaders = [
             self.load_observability_metrics_evidence,
             self.load_alerts_evidence,
@@ -44,7 +46,7 @@ class ExplanationEvidenceLoader:
             except Exception as exc:
                 self._warn(f"evidence_loader_failed:{loader.__name__}:{exc}")
         if self.warnings:
-            evidence.append(self._system_evidence("evidence_loader_warnings", "; ".join(self.warnings), risk_flags=["missing_or_unreadable_source"]))
+            evidence.append(self._system_evidence("evidence_loader_warnings", "; ".join(self.warnings), risk_flags=["missing_or_unreadable_source"], reason_codes=["source_unavailable", "missing_or_unreadable_source"]))
         return [ExplanationEvidence.from_dict(item) for item in evidence]
 
     def load_observability_metrics_evidence(self) -> list[ExplanationEvidence]:
@@ -173,36 +175,56 @@ class ExplanationEvidenceLoader:
         if not path.is_absolute():
             path = self.root / path
         if not path.exists():
-            self._warn(f"missing_status:{label}:{path}")
+            self._warn_once(f"missing_status:{label}:{path}", f"missing_status:{label}:{path}")
             return {}
         try:
             data = json.loads(path.read_text(encoding="utf-8-sig"))
             return clean_dict(data)
         except Exception as exc:
-            self._warn(f"broken_status:{label}:{exc}")
+            self._warn_once(f"broken_status:{label}:{type(exc).__name__}", f"broken_status:{label}:{exc}")
             return {}
 
     def _load_table_rows(self, table: str, source: str, evidence_type: str, *, title_field: str, time_field: str, advisory: bool = False, observed: bool = False, estimated: bool = False) -> list[ExplanationEvidence]:
         if not self.db_path.exists():
-            self._warn(f"missing_db:{self.db_path}")
+            self._warn_once(f"missing_db:{self.db_path}", f"missing_db:{self.db_path}")
             return []
         try:
-            conn = sqlite3.connect(f"file:{self.db_path}?mode=ro", uri=True)
+            conn = sqlite3.connect(f"file:{self.db_path.as_posix()}?mode=ro", uri=True, timeout=1.0)
             conn.row_factory = sqlite3.Row
             try:
                 exists = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table,)).fetchone()
                 if not exists:
-                    self._warn(f"missing_table:{table}")
+                    self._warn_once(f"missing_table:{table}", f"missing_table:{table}")
                     return []
-                columns = {row[1] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
-                order = time_field if time_field in columns else next(iter(columns), "rowid")
-                rows = conn.execute(f"SELECT * FROM {table} ORDER BY {order} DESC LIMIT ?", (max(1, self.limit),)).fetchall()
+                columns = {str(row[1]) for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+                order = self._pick_order_field(columns, time_field)
+                rows = self._fetch_table_rows(conn, table, order)
                 return [self._evidence_from_payload(source, evidence_type, str(dict(row).get(title_field) or table), dict(row), advisory=advisory, observed=observed, estimated=estimated) for row in rows]
             finally:
                 conn.close()
-        except Exception as exc:
-            self._warn(f"read_table_failed:{table}:{exc}")
+        except sqlite3.OperationalError as exc:
+            self._warn_once(f"read_table_failed:{table}:{type(exc).__name__}", f"read_table_failed:{table}:{exc}")
             return []
+        except Exception as exc:
+            self._warn_once(f"read_table_failed:{table}:{type(exc).__name__}", f"read_table_failed:{table}:{exc}")
+            return []
+
+    def _pick_order_field(self, columns: set[str], preferred: str | None) -> str | None:
+        for candidate in (preferred, "rowid", "updated_at", "created_at", "generated_at", "timestamp", "id"):
+            if not candidate:
+                continue
+            if candidate == "rowid" or candidate in columns:
+                return candidate
+        return None
+
+    def _fetch_table_rows(self, conn: sqlite3.Connection, table: str, order: str | None) -> list[sqlite3.Row]:
+        limit = max(1, self.limit)
+        if order:
+            try:
+                return conn.execute(f"SELECT * FROM {table} ORDER BY {order} DESC LIMIT ?", (limit,)).fetchall()
+            except Exception as exc:
+                self._warn_once(f"order_fallback:{table}:{order}:{type(exc).__name__}", f"order_fallback:{table}:{order}:{exc}")
+        return conn.execute(f"SELECT * FROM {table} LIMIT ?", (limit,)).fetchall()
 
     def _evidence_from_payload(self, source: str, evidence_type: str, title: Any, payload: Any, *, advisory: bool = False, observed: bool = False, estimated: bool = False, confidence: str = "unknown") -> ExplanationEvidence:
         data = clean_dict(payload)
@@ -232,8 +254,25 @@ class ExplanationEvidenceLoader:
             raw_payload=data,
         )
 
-    def _system_evidence(self, title: str, summary: str, *, risk_flags: list[str] | None = None) -> ExplanationEvidence:
-        return ExplanationEvidence(source="system", evidence_type="system_status", title=title, summary=summary, confidence="unknown", advisory=True, timestamp=utc_now_iso(), risk_flags=list(risk_flags or []), raw_payload={"warnings": list(self.warnings)})
+    def _system_evidence(self, title: str, summary: str, *, risk_flags: list[str] | None = None, reason_codes: list[str] | None = None) -> ExplanationEvidence:
+        return ExplanationEvidence(source="system", evidence_type="system_status", title=title, summary=summary, confidence="unknown", advisory=True, timestamp=utc_now_iso(), reason_codes=list(reason_codes or []), risk_flags=list(risk_flags or []), raw_payload={"warnings": list(self.warnings), "unavailable_sources": self._unavailable_sources()})
+
+    def _unavailable_sources(self) -> list[str]:
+        values: list[str] = []
+        for warning in self.warnings:
+            if warning.startswith("missing_status:"):
+                parts = warning.split(":", 3)
+                if len(parts) >= 3:
+                    values.append(parts[1])
+            elif warning.startswith(("missing_table:", "missing_db:")):
+                values.append(warning.split(":", 1)[0])
+        return sorted(set(values))
+
+    def _warn_once(self, key: str, message: str) -> None:
+        if key in self._warning_keys:
+            return
+        self._warning_keys.add(key)
+        self._warn(message)
 
     def _warn(self, message: str) -> None:
         self.warnings.append(message)

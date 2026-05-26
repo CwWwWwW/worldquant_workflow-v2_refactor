@@ -3,11 +3,9 @@ from __future__ import annotations
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any, Iterator, Sequence
 
 from wq_workflow.data.json_utils import json_loads_safe, safe_float, safe_int
-from wq_workflow.data.migrations import initialize_refactor_tables
-
 from .schema import StrategyEvidence, utc_now_iso
 
 
@@ -17,8 +15,25 @@ def _evidence_id(prefix: str, *parts: Any) -> str:
     return f"{prefix}:{safe or utc_now_iso()}"
 
 
+_ALLOWED_TABLES = {
+    "counterfactual_estimates",
+    "counterfactual_summaries",
+    "decision_outcomes",
+    "decision_snapshots",
+    "experiment_budget_allocations",
+    "experiment_budget_plans",
+    "experiment_budget_snapshots",
+    "ml_model_registry",
+    "ml_prediction_audit",
+    "ml_training_samples",
+    "model_safety_reports",
+    "offline_replay_comparisons",
+    "offline_replay_policy_metrics",
+}
+
+
 class StrategyEvidenceLoader:
-    def __init__(self, *, storage: Any | None = None, db_path: str | Path | None = None, config: Any | None = None, logger: Any | None = None) -> None:
+    def __init__(self, *, storage: Any | None = None, db_path: str | Path | None = None, config: Any | None = None, logger: Any | None = None, read_only: bool = True) -> None:
         self.storage = storage
         path = db_path if db_path is not None else getattr(getattr(storage, "config", None), "db_path", None)
         if path is None and config is not None:
@@ -26,19 +41,26 @@ class StrategyEvidenceLoader:
         self.db_path = Path(path) if path is not None else None
         self.config = config
         self.logger = logger
+        self.read_only = bool(read_only)
         self.warnings: list[str] = []
 
     @contextmanager
     def connection(self) -> Iterator[sqlite3.Connection]:
         if self.db_path is None:
             raise RuntimeError("database path unavailable")
-        from wq_workflow.storage.schema import initialize_schema
-        from wq_workflow.storage.sqlite_store import connect_db
+        if self.read_only:
+            if not self.db_path.exists():
+                raise FileNotFoundError(f"missing_db:{self.db_path}")
+            conn = sqlite3.connect(f"file:{self.db_path.as_posix()}?mode=ro", uri=True, timeout=1.0)
+        else:
+            from wq_workflow.data.migrations import initialize_refactor_tables
+            from wq_workflow.storage.schema import initialize_schema
+            from wq_workflow.storage.sqlite_store import connect_db
 
-        conn = connect_db(self.db_path)
-        try:
+            conn = connect_db(self.db_path)
             initialize_schema(conn)
             initialize_refactor_tables(conn)
+        try:
             yield conn
         finally:
             conn.close()
@@ -71,7 +93,7 @@ class StrategyEvidenceLoader:
 
     def load_replay_evidence(self) -> list[StrategyEvidence]:
         evidence: list[StrategyEvidence] = []
-        for row in self._query("SELECT * FROM offline_replay_policy_metrics ORDER BY rowid DESC LIMIT ?", (self._limit(),), "offline_replay_policy_metrics"):
+        for row in self._query("SELECT * FROM offline_replay_policy_metrics ORDER BY rowid DESC LIMIT ?", "offline_replay_policy_metrics", (self._limit(),)):
             reasons = json_loads_safe(row.get("reason_codes_json"), [])
             evidence.append(StrategyEvidence(
                 evidence_id=_evidence_id("replay_metrics", row.get("metric_id"), row.get("policy_name"), row.get("decision_type")),
@@ -86,7 +108,7 @@ class StrategyEvidenceLoader:
                 reason_codes=[str(x) for x in reasons] if isinstance(reasons, list) else [],
                 raw_payload=dict(row),
             ))
-        for row in self._query("SELECT * FROM offline_replay_comparisons ORDER BY created_at DESC LIMIT ?", (self._limit(),), "offline_replay_comparisons"):
+        for row in self._query("SELECT * FROM offline_replay_comparisons ORDER BY created_at DESC LIMIT ?", "offline_replay_comparisons", (self._limit(),)):
             risk_flags = []
             if (safe_float(row.get("sc_risk_delta"), 0.0) or 0.0) > 0:
                 risk_flags.append("replay_sc_risk_delta_positive")
@@ -109,7 +131,7 @@ class StrategyEvidenceLoader:
 
     def load_counterfactual_evidence(self) -> list[StrategyEvidence]:
         evidence: list[StrategyEvidence] = []
-        for row in self._query("SELECT * FROM counterfactual_estimates ORDER BY created_at DESC LIMIT ?", (self._limit(),), "counterfactual_estimates"):
+        for row in self._query("SELECT * FROM counterfactual_estimates ORDER BY created_at DESC LIMIT ?", "counterfactual_estimates", (self._limit(),)):
             risk_flags = json_loads_safe(row.get("risk_flags_json"), [])
             reason_codes = json_loads_safe(row.get("reason_codes_json"), [])
             flags = [str(item) for item in risk_flags] if isinstance(risk_flags, list) else []
@@ -130,7 +152,7 @@ class StrategyEvidenceLoader:
                 reason_codes=list(dict.fromkeys(["counterfactual_estimated_not_actual", *([str(item) for item in reason_codes] if isinstance(reason_codes, list) else [])])),
                 raw_payload={**dict(row), "estimated_not_observed": True, "actual_outcome": False},
             ))
-        for row in self._query("SELECT * FROM counterfactual_summaries ORDER BY updated_at DESC LIMIT ?", (self._limit(),), "counterfactual_summaries"):
+        for row in self._query("SELECT * FROM counterfactual_summaries ORDER BY updated_at DESC LIMIT ?", "counterfactual_summaries", (self._limit(),)):
             flags = ["counterfactual_summary_estimated_not_actual"]
             if (safe_int(row.get("high_risk_count"), 0) or 0) > 0:
                 flags.append("high_risk_estimate")
@@ -141,7 +163,7 @@ class StrategyEvidenceLoader:
 
     def load_governance_evidence(self) -> list[StrategyEvidence]:
         evidence: list[StrategyEvidence] = []
-        for row in self._query("SELECT * FROM model_safety_reports ORDER BY created_at DESC LIMIT ?", (self._limit(),), "model_safety_reports"):
+        for row in self._query("SELECT * FROM model_safety_reports ORDER BY created_at DESC LIMIT ?", "model_safety_reports", (self._limit(),)):
             status = str(row.get("safety_status") or "unknown")
             risk_flags = [] if status in {"pass", "passed", "safe"} else ["governance_blocked"]
             evidence.append(StrategyEvidence(evidence_id=_evidence_id("governance_status", row.get("report_id"), row.get("strategy_id")), strategy_id="governance_safe_policy", evidence_type="governance_status", sample_count=1, governance_status=status, risk_flags=risk_flags, reason_codes=[str(row.get("reason") or status)], raw_payload=dict(row)))
@@ -199,30 +221,46 @@ class StrategyEvidenceLoader:
             return {}
 
     def _table_exists(self, conn: sqlite3.Connection, table: str) -> bool:
+        if not self._is_allowed_table(table):
+            return False
         row = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table,)).fetchone()
         return row is not None
 
-    def _query(self, sql: str, params: tuple[Any, ...], table: str) -> list[dict[str, Any]]:
+    def _is_allowed_table(self, table: str) -> bool:
+        return str(table or "") in _ALLOWED_TABLES
+
+    def _query(self, sql: str, source_name: str, params: Sequence[Any] | None = None) -> list[dict[str, Any]]:
+        if not self._is_allowed_table(source_name):
+            self._warn(f"invalid_table:{source_name}")
+            return []
+        bound_params = tuple(params or ())
         try:
             with self.connection() as conn:
                 conn.row_factory = sqlite3.Row
-                if table and not self._table_exists(conn, table):
+                if not self._table_exists(conn, source_name):
+                    self._warn(f"missing_table:{source_name}")
                     return []
-                rows = conn.execute(sql, params).fetchall()
+                rows = conn.execute(sql, bound_params).fetchall()
                 return [dict(row) for row in rows if hasattr(row, "keys")]
+        except FileNotFoundError:
+            self._warn(f"missing_db:{self.db_path}")
+            return []
         except Exception as exc:
-            self._warn(f"query_failed:{table}:{exc}")
+            self._warn(f"query_failed:{source_name}:{exc}")
             return []
 
-    def _one(self, sql: str, table: str) -> dict[str, Any] | None:
-        rows = self._query(sql, (), table)
+    def _one(self, sql: str, source_name: str, params: Sequence[Any] | None = None) -> dict[str, Any] | None:
+        rows = self._query(sql, source_name, params)
         return rows[0] if rows else None
 
-    def _count(self, table: str, where: str = "", params: tuple[Any, ...] = ()) -> int:
+    def _count(self, table: str, where: str = "", params: Sequence[Any] | None = None) -> int:
+        if not self._is_allowed_table(table):
+            self._warn(f"invalid_table:{table}")
+            return 0
         sql = f"SELECT COUNT(*) AS n FROM {table}"
         if where:
             sql += f" WHERE {where}"
-        row = self._one(sql, table)
+        row = self._one(sql, table, params)
         return safe_int((row or {}).get("n"), 0) or 0
 
     def _warn(self, message: str) -> None:

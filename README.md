@@ -181,3 +181,5 @@ The legacy official workflow remains the real execution path. `wq_workflow/legac
 - `runtime/status/legacy_learning_evidence.jsonl` for observed legacy evidence.
 
 The bridge does not control legacy execution and does not change reward, CandidatePool behavior, alpha/template generation, platform automation, Governance hard flags, Strategy Budget, promotion, or rollback. Payloads are truncated/redacted and the dashboard/CLI/observability integrations are read-only.
+
+By default, bridge JSONL status streams assume a single main-process writer. Appends are small fail-open writes; readers skip malformed lines instead of interrupting dashboard, CLI, or observability readers.
