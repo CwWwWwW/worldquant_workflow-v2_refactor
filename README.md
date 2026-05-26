@@ -140,8 +140,10 @@ Default policy keeps `legacy_baseline` at a minimum floor of `0.40` and `random_
 
 Legacy `portfolio`, `champion_challenger`, `budget_allocator`, `promotion`, and `rollback` modules remain import-compatible and isolated. Promotion/rollback tools remain manual and are not called by Phase 6C. The refactored pipeline remains non-production-official by default until a later explicit phase.
 
-## Phase 7A Observability Metrics
+## Phase 7 Observability
 
 Phase 7A adds a metrics-only observability layer in `wq_workflow/observability/`. It reads workflow, ML, Governance, Experiment, Offline Replay, Counterfactual, Strategy/Portfolio/Budget, and System status from existing JSON files and SQLite summaries, persists read-only observations into observability tables, and writes `runtime/status/observability_metrics.json`.
 
-7A does not perform Drift Detection, Alerts, Health Diagnosis, Explainability, Run Reports, automatic remediation, hard takeover, model training, reward changes, CandidatePool changes, Governance hard-flag changes, promotion/rollback, or Strategy budget application. `observability_auto_collect` defaults to `false`; alert, drift, diagnosis, explainability, and remediation flags default to `false`. The refactored pipeline remains non-production by default. Phase 7B is reserved for Drift / Alert / Health Diagnosis, and Phase 7C is reserved for Explainability / Run Report / Decision Trace. Phase 7 work continues on `phase7-observability` until all Phase 7 sub-phases are complete.
+Phase 7B adds advisory-only Drift / Alert / Health Diagnosis on top of 7A metrics. It writes `runtime/status/observability_alerts.json` and `runtime/status/health_diagnosis.json` from local metrics, source statuses, and SQLite observability history.
+
+7B does not send external notifications, does not perform automatic remediation, does not stop or roll back the workflow, does not change alpha generation, parent selection, mutation policy, reward semantics, CandidatePool, platform automation, WAIT_RESULT/PARSE_RESULT, SC collection, Governance hard-decision flags, or Strategy budget allocation, and does not call promotion/rollback or train models. `observability_auto_collect`, `observability_diagnostics_auto_run`, external alert emit, and remediation all default to `false`; alert mode is advisory. Phase 7C is reserved for Explainability / Run Report / Decision Trace. Phase 7 work continues on `phase7-observability` until all Phase 7 sub-phases are complete; do not merge main before Phase 7 is complete.

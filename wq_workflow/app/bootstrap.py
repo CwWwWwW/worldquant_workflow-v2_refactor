@@ -342,6 +342,23 @@ def build_app_context(config_path: str | Path | None = None, config: Any | None 
             ctx.runtime_status["observability"] = observability_service.startup_check()
         else:
             ctx.runtime_status["observability"] = {"ok": True, "enabled": False, "mode": getattr(config, "observability_mode", "metrics_only")}
+        try:
+            from wq_workflow.observability.alert_diagnosis_service import AlertDiagnosisService
+
+            alert_diagnosis_service = AlertDiagnosisService(
+                config=config,
+                storage=storage,
+                db_path=getattr(config, "storage_db_path", "runtime/db/workflow.db"),
+                logger=logger,
+                observability_service=observability_service,
+            )
+            ctx.alert_diagnosis_service = alert_diagnosis_service
+            ctx.observability_services["alerts"] = alert_diagnosis_service
+            ctx.observability_services["diagnosis"] = alert_diagnosis_service
+            ctx.runtime_status["observability_alerts"] = alert_diagnosis_service.startup_check()
+        except Exception as exc:
+            logger.warning("observability alert diagnosis initialization skipped: %s", exc)
+            ctx.runtime_status["observability_alerts"] = {"ok": bool(getattr(config, "observability_diagnosis_fail_open", True)), "enabled": bool(getattr(config, "enable_observability_alerts", False) or getattr(config, "enable_observability_diagnosis", False)), "fail_open": True, "error": str(exc)}
     except Exception as exc:
         logger.warning("observability metrics initialization skipped: %s", exc)
         ctx.runtime_status["observability"] = {"ok": bool(getattr(config, "observability_fail_open", True)), "enabled": bool(getattr(config, "enable_observability_metrics", True)), "fail_open": True, "error": str(exc)}

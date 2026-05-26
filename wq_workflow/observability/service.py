@@ -51,9 +51,9 @@ class ObservabilityService:
                 "enabled": enabled,
                 "mode": getattr(self.config, "observability_mode", "metrics_only"),
                 "auto_collect": bool(getattr(self.config, "observability_auto_collect", False)),
-                "alerts_enabled": False,
-                "drift_detection_enabled": False,
-                "diagnosis_enabled": False,
+                "alerts_enabled": bool(getattr(self.config, "enable_observability_alerts", False)),
+                "drift_detection_enabled": bool(getattr(self.config, "enable_observability_drift_detection", False)),
+                "diagnosis_enabled": bool(getattr(self.config, "enable_observability_diagnosis", False)),
                 "explainability_enabled": False,
             }
             if enabled and bool(getattr(self.config, "observability_auto_collect", False)):
@@ -121,9 +121,9 @@ class ObservabilityService:
             "auto_collect": bool(getattr(self.config, "observability_auto_collect", False)),
             "status_path": str(getattr(self.config, "observability_metrics_status_path", "runtime/status/observability_metrics.json")),
             "latest_summary": latest.to_dict() if latest else None,
-            "alerts_enabled": False,
-            "drift_detection_enabled": False,
-            "diagnosis_enabled": False,
+            "alerts_enabled": bool(getattr(self.config, "enable_observability_alerts", False)),
+            "drift_detection_enabled": bool(getattr(self.config, "enable_observability_drift_detection", False)),
+            "diagnosis_enabled": bool(getattr(self.config, "enable_observability_diagnosis", False)),
             "explainability_enabled": False,
         }
 

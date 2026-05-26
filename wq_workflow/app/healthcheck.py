@@ -48,6 +48,13 @@ def run_startup_healthcheck(
         "ready": False,
         "mode": getattr(config, "observability_mode", "metrics_only"),
     }
+    observability_alert_status: dict[str, Any] = {
+        "alerts_enabled": bool(getattr(config, "enable_observability_alerts", False)),
+        "drift_detection_enabled": bool(getattr(config, "enable_observability_drift_detection", False)),
+        "diagnosis_enabled": bool(getattr(config, "enable_observability_diagnosis", False)),
+        "ready": False,
+        "mode": "advisory",
+    }
 
     def warn(message: str) -> None:
         warnings.append(message)
@@ -87,6 +94,34 @@ def run_startup_healthcheck(
                     observability_status.update({"ready": False, "status_path": str(status_path), "error": str(exc)})
             else:
                 observability_status["ready"] = True
+            missing_alert_tables: list[str] = []
+            for table in (
+                "observability_drift_rules",
+                "observability_drift_signals",
+                "observability_alert_rules",
+                "observability_alert_events",
+                "observability_health_diagnoses",
+                "observability_health_reports",
+            ):
+                if table not in tables:
+                    missing_alert_tables.append(table)
+                    warn(f"missing_observability_alert_table:{table}")
+            alert_path = _resolve_path(root_path, getattr(config, "observability_alerts_status_path", "runtime/status/observability_alerts.json"))
+            diagnosis_path = _resolve_path(root_path, getattr(config, "observability_diagnosis_status_path", "runtime/status/health_diagnosis.json"))
+            path_ready = True
+            for path in (alert_path, diagnosis_path):
+                try:
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                except Exception as exc:
+                    path_ready = False
+                    warn(f"observability_advisory_status_path_unavailable:{path}:{exc}")
+            if path_ready:
+                auto_fixes.append("observability_advisory_status_paths_ready")
+            observability_alert_status.update({
+                "ready": not missing_alert_tables and path_ready,
+                "alert_status_path": str(alert_path),
+                "diagnosis_status_path": str(diagnosis_path),
+            })
         finally:
             conn.close()
     except Exception as exc:
@@ -165,7 +200,7 @@ def run_startup_healthcheck(
         except Exception as exc:
             warn(f"governance_startup_check_failed:{exc}")
 
-    result = {"ok": not errors, "mode": mode, "warnings": warnings, "errors": errors, "auto_fixes": auto_fixes, "observability": observability_status}
+    result = {"ok": not errors, "mode": mode, "warnings": warnings, "errors": errors, "auto_fixes": auto_fixes, "observability": observability_status, "observability_alerts": observability_alert_status}
     try:
         audit_path = _resolve_path(root_path, getattr(config, "healthcheck_audit_path", "runtime/audit/healthcheck.jsonl"))
         _json_line(audit_path, {"timestamp": datetime.now().isoformat(timespec="seconds"), **result})

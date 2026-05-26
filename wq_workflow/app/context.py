@@ -29,6 +29,7 @@ class AppContext:
     strategy_portfolio_service: Any = None
     strategy_budget_service: Any = None
     observability_service: Any = None
+    alert_diagnosis_service: Any = None
     experiment_services: dict[str, Any] = field(default_factory=dict)
     monitoring_services: dict[str, Any] = field(default_factory=dict)
     observability_services: dict[str, Any] = field(default_factory=dict)

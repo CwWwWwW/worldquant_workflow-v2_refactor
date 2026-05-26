@@ -16,10 +16,12 @@ runtime/models/
 runtime/status/
 runtime/audit/
 runtime/tmp/
+runtime/pytest_tmp/
 runtime/cache/
 runtime/screenshots/
 runtime/failures/
 runtime/logs/
+runtime/debug/
 
 # Logs
 logs/
