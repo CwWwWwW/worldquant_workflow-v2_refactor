@@ -156,12 +156,13 @@ def append_jsonl_direct(path: str | Path, payload: dict[str, Any], *, max_bytes:
         line = json.dumps(json_safe(payload), ensure_ascii=False, allow_nan=False, default=str)
         with target.open("a", encoding="utf-8") as fh:
             fh.write(line + "\n")
+            fh.flush()
         return True
     except Exception:
         return False
 
 
-def read_jsonl_tail_direct(path: str | Path, *, limit: int = 50, max_bytes: int = 262_144) -> list[dict[str, Any]]:
+def read_jsonl_tail_direct(path: str | Path, *, limit: int = 50, max_bytes: int = 262_144, warnings: list[str] | None = None) -> list[dict[str, Any]]:
     target = Path(path)
     if not target.exists():
         return []
@@ -171,13 +172,23 @@ def read_jsonl_tail_direct(path: str | Path, *, limit: int = 50, max_bytes: int 
             size = fh.tell()
             fh.seek(max(0, size - max(1, int(max_bytes))))
             text = fh.read().decode("utf-8-sig", errors="replace")
+        if size > max(1, int(max_bytes)):
+            first_newline = text.find("\n")
+            if first_newline >= 0:
+                text = text[first_newline + 1 :]
     except Exception:
+        if warnings is not None:
+            warnings.append("jsonl_read_failed")
         return []
     rows: list[dict[str, Any]] = []
+    bad_line_warned = False
     for line in text.splitlines()[-max(1, int(limit)):]:
         try:
             value = json.loads(line)
         except Exception:
+            if warnings is not None and not bad_line_warned:
+                warnings.append("bad_jsonl_line_skipped")
+                bad_line_warned = True
             continue
         if isinstance(value, dict):
             rows.append(value)

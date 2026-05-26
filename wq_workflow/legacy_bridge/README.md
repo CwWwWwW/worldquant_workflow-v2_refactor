@@ -9,3 +9,5 @@ Outputs:
 - `runtime/status/legacy_learning_evidence.jsonl`: observed legacy evidence for later advisory learning.
 
 The observer does not change reward, CandidatePool behavior, template generation, alpha generation, platform automation, Governance hard flags, Strategy Budget, promotion, or rollback. All hooks are fail-open and redact/truncate sensitive or large payloads.
+
+Concurrency note: the bridge JSONL files are designed for the default single main-process writer. Appends are one-record open/write/flush operations and fail open; readers skip corrupt lines with a single warning per read instead of blocking the legacy workflow.

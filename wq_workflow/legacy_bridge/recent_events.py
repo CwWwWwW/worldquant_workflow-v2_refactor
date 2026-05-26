@@ -49,9 +49,11 @@ class RecentEventReader:
     def __init__(self, path: str | Path = DEFAULT_RECENT_EVENTS_PATH, *, root: str | Path | None = None) -> None:
         self.root = Path(root or paths.ROOT)
         self.path = resolve_path(self.root, path)
+        self.warnings: list[str] = []
 
     def read_raw_tail(self, limit: int = 50) -> list[dict[str, Any]]:
-        return read_jsonl_tail_direct(self.path, limit=limit)
+        self.warnings = []
+        return read_jsonl_tail_direct(self.path, limit=limit, warnings=self.warnings)
 
     def read_tail(self, limit: int = 50) -> list[RuntimeEvent]:
         return [RuntimeEvent.from_dict(row) for row in self.read_raw_tail(limit=limit)]

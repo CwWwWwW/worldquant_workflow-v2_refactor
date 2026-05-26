@@ -97,9 +97,11 @@ class LegacyLearningEvidenceReader:
     def __init__(self, path: str | Path = DEFAULT_LEGACY_EVIDENCE_PATH, *, root: str | Path | None = None) -> None:
         self.root = Path(root or paths.ROOT)
         self.path = resolve_path(self.root, path)
+        self.warnings: list[str] = []
 
     def read_tail(self, limit: int = 200) -> list[LegacyLearningEvidence]:
-        return [LegacyLearningEvidence.from_dict(row) for row in read_jsonl_tail_direct(self.path, limit=limit)]
+        self.warnings = []
+        return [LegacyLearningEvidence.from_dict(row) for row in read_jsonl_tail_direct(self.path, limit=limit, warnings=self.warnings)]
 
     def summarize_by_type(self, limit: int = 200) -> dict[str, Any]:
         summary: dict[str, Any] = {}
