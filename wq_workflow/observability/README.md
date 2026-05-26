@@ -31,3 +31,6 @@ This package contains the Phase 7 observability layer.
 The 7C layer is for human review. It does not send external notifications, does not perform automatic remediation, does not stop or roll back the workflow, does not change reward semantics or CandidatePool state, does not modify Governance hard-decision flags, does not apply Strategy budget, does not execute promotion or rollback, does not train models, and does not treat counterfactual estimates as actual outcomes.
 
 Defaults are conservative: `enable_run_explainability=false`, `observability_explainability_auto_run=false`, `observability_explainability_mode=explain_only`, and `observability_explanation_auto_action=false`. Phase 7A/7B/7C completion should wait for explicit user instruction before merging to `main`.
+### Legacy bridge source
+
+Observability can read `runtime/status/runtime_state.json` and `runtime/status/recent_events.jsonl` as read-only workflow context. These sources report availability, staleness, latest state, iteration, and recent error counts only; they do not trigger collect, diagnose, explain, remediation, promotion, rollback, or legacy workflow actions.

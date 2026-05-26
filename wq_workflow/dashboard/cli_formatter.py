@@ -23,6 +23,9 @@ class CLIStatusFormatter:
         lines.append(self.format_observability(snapshot.observability))
         lines.append(self.format_sources(snapshot.sources))
         lines.append(self.format_recent_events(snapshot.runtime.recent_events, limit=limit if compact else max(limit, 20)))
+        evidence_summary = getattr(snapshot.runtime, "legacy_evidence_summary", {}) or {}
+        if evidence_summary:
+            lines.append(self.format_legacy_evidence(evidence_summary, limit=3 if compact else limit))
         errors = snapshot.raw_payload.get("log_errors", []) if isinstance(snapshot.raw_payload, dict) else []
         if errors:
             lines.append(self.format_error_summary(errors, limit=3 if compact else limit))
@@ -40,7 +43,10 @@ class CLIStatusFormatter:
             f"running={runtime.workflow_running} state={runtime.current_state or 'UNKNOWN'} "
             f"template={runtime.current_template or '-'} alpha={runtime.current_alpha_id or '-'} "
             f"iter={runtime.current_iteration if runtime.current_iteration is not None else '-'} "
-            f"wait={runtime.platform_waiting} parse={runtime.parse_waiting} sc={runtime.sc_check_status or '-'}"
+            f"wait={runtime.platform_waiting} progress={_fmt(getattr(runtime, 'platform_progress', None))} "
+            f"parse={runtime.parse_waiting} parse_status={getattr(runtime, 'parse_status', None) or '-'} "
+            f"sc={runtime.sc_check_status or '-'} reward={_fmt(getattr(runtime, 'last_reward', None))} "
+            f"sc_value={_fmt(getattr(runtime, 'last_sc_value', None))}"
         )
 
     def format_ml(self, ml: DashboardMLStatus) -> str:
@@ -95,6 +101,15 @@ class CLIStatusFormatter:
                 )
             )
         return "\n".join(lines)
+
+    def format_legacy_evidence(self, summary: dict[str, Any], limit: int = 3) -> str:
+        if not summary:
+            return ""
+        parts = []
+        for key, value in list(summary.items())[: max(1, int(limit))]:
+            count = value.get("count") if isinstance(value, dict) else value
+            parts.append(f"{key}={count}")
+        return "Legacy evidence: " + "; ".join(parts)
 
     def format_error_summary(self, errors: list[dict[str, Any]], limit: int = 3) -> str:
         if not errors:

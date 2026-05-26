@@ -27,6 +27,7 @@ from .config import selector_config
 from .correlation import check_self_correlation, extract_structure
 from .failure_artifacts import capture_failure_artifacts
 from .logger_state import STATE_FATAL, STATE_PROGRESS, log_recovery_sidecar, log_state_event
+from .legacy_bridge.integration import safe_observe
 from .favorites import add_to_favorites
 from .models import SIMULATE_URL, PlatformError, QualityReport, RunValidation, SimulationResult, WorkflowConfig
 from .page_healthcheck import page_healthcheck
@@ -109,6 +110,22 @@ class SimulateFSMContext:
     result_uncertain: bool = False
     platform_sc: dict[str, Any] = field(default_factory=dict)
     platform_sc_checked: bool = False
+    legacy_observer: Any | None = None
+    iteration: int | None = None
+    template_name: str | None = None
+    template_family: str | None = None
+
+
+def _observe_ctx(ctx: Any, method_name: str, **kwargs: Any) -> None:
+    safe_observe(
+        getattr(ctx, "legacy_observer", None),
+        method_name,
+        alpha_id=getattr(ctx, "alpha_name", None),
+        iteration=getattr(ctx, "iteration", None),
+        template_name=getattr(ctx, "template_name", None) or getattr(ctx, "template_file", None),
+        template_family=getattr(ctx, "template_family", None),
+        **kwargs,
+    )
 
 
 def simulate_selectors(config: WorkflowConfig) -> SimulateSelectors:
@@ -149,6 +166,10 @@ async def run_platform_backtest_attempt(
     alpha_name: str,
     config: WorkflowConfig,
     template_file: str = "",
+    legacy_observer: Any | None = None,
+    iteration: int | None = None,
+    template_name: str | None = None,
+    template_family: str | None = None,
 ) -> SimulationResult:
     recovery_attempts = 0
     browser_restart_attempts = 0
@@ -162,6 +183,10 @@ async def run_platform_backtest_attempt(
                 alpha_name=alpha_name,
                 config=config,
                 template_file=template_file,
+                legacy_observer=legacy_observer,
+                iteration=iteration,
+                template_name=template_name,
+                template_family=template_family,
             )
         finally:
             await supervisor.close_session(session, persist_storage=False)
@@ -216,6 +241,10 @@ async def run_alpha_fsm(
     alpha_name: str,
     config: WorkflowConfig,
     template_file: str = "",
+    legacy_observer: Any | None = None,
+    iteration: int | None = None,
+    template_name: str | None = None,
+    template_family: str | None = None,
 ) -> SimulationResult:
     fsm_context = SimulateFSMContext(
         supervisor=supervisor,
@@ -226,6 +255,10 @@ async def run_alpha_fsm(
         config=config,
         selectors=simulate_selectors(config),
         template_file=template_file,
+        legacy_observer=legacy_observer,
+        iteration=iteration,
+        template_name=template_name,
+        template_family=template_family,
     )
     handlers = {
         WorkflowState.INIT: lambda: fsm_init(fsm_context),
@@ -445,6 +478,7 @@ async def fsm_write_name(ctx: SimulateFSMContext) -> None:
 
 
 async def fsm_click_run(ctx: SimulateFSMContext) -> None:
+    _observe_ctx(ctx, "on_backtest_submit_start")
     ctx.baseline_progress = await read_progress(ctx.page)
     await ensure_simulate_auth(ctx.page, ctx.config, "fsm_before_run_click")
     await ensure_alpha_details_settings_not_blocking_run(ctx.page, "fsm_before_run_click")
@@ -461,6 +495,7 @@ async def fsm_click_run(ctx: SimulateFSMContext) -> None:
     if run_validation.ok:
         ctx.new_simulation_id = run_validation.new_simulation_id
         ctx.observed_start = True
+        _observe_ctx(ctx, "on_backtest_submit_done", current_run_id=ctx.simulation_session_id)
         return
     ctx.new_simulation_id = run_validation.new_simulation_id
     ctx.observed_start = await run_start_signal_seen(ctx.page, timeout_seconds=12, baseline_progress=ctx.baseline_progress)
@@ -482,6 +517,7 @@ async def fsm_wait_queue(ctx: SimulateFSMContext) -> None:
 
 
 async def fsm_wait_result(ctx: SimulateFSMContext) -> None:
+    _observe_ctx(ctx, "on_wait_result_start")
     ctx.page_text = await wait_for_backtest_finished(
         ctx.page,
         ctx.config,
@@ -495,9 +531,11 @@ async def fsm_wait_result(ctx: SimulateFSMContext) -> None:
     ctx.result_stable_count = max(ctx.result_stable_count, result_stable_reads(ctx.config))
     ctx.progress_complete = True
     ctx.metrics_stable = bool(ctx.result_fingerprint)
+    _observe_ctx(ctx, "on_wait_result_done", platform_progress=1.0, raw_payload={"result_stable_count": ctx.result_stable_count, "fingerprint_available": bool(ctx.result_fingerprint)})
 
 
 async def fsm_parse_result(ctx: SimulateFSMContext) -> None:
+    _observe_ctx(ctx, "on_parse_result_start")
     await ensure_simulate_auth(ctx.page, ctx.config, "fsm_before_result_collect")
     await ensure_alpha_details_settings_closed(ctx.page, "fsm_before_result_collect")
     validation = await collect_and_validate_result_with_stale_downgrade(ctx)
@@ -518,6 +556,7 @@ async def fsm_parse_result(ctx: SimulateFSMContext) -> None:
     ctx.metrics = extract_metrics(ctx.page_text)
     ctx.platform_sc = await run_platform_sc_check_after_backtest(ctx)
     ctx.metrics = apply_platform_sc_to_metrics(ctx.metrics, ctx.platform_sc)
+    _observe_ctx(ctx, "on_parse_result_done", parse_status="done", metrics=ctx.metrics, platform_sc=ctx.platform_sc)
     ctx.template_success = detection.template_success
     ctx.template_success_reason = detection.reason
     ctx.success_candidate = detection.candidate_success
@@ -538,15 +577,19 @@ async def run_platform_sc_check_after_backtest(ctx: SimulateFSMContext) -> dict[
     ctx.platform_sc_checked = True
     if not bool(getattr(ctx.config, "enable_platform_sc_check", True)):
         logging.info("[PlatformSC] alpha=%s skipped reason=disabled_by_config", ctx.alpha_name)
-        return {"status": "skipped", "source": "platform", "reason": "disabled_by_config"}
+        platform_sc = {"status": "skipped", "source": "platform", "reason": "disabled_by_config"}
+        _observe_ctx(ctx, "on_sc_check_done", platform_sc=platform_sc)
+        return platform_sc
     timeout_seconds = max(1, int(getattr(ctx.config, "platform_sc_timeout_seconds", 90) or 90))
     logging.info("[PlatformSC] alpha=%s start after_backtest=true timeout=%s", ctx.alpha_name, timeout_seconds)
+    _observe_ctx(ctx, "on_sc_check_start")
     platform_sc = await collect_platform_sc_safely(
         ctx.page,
         alpha_name=ctx.alpha_name,
         timeout_seconds=timeout_seconds,
     )
     ctx.platform_sc = platform_sc
+    _observe_ctx(ctx, "on_sc_check_done", platform_sc=platform_sc)
     return platform_sc
 
 

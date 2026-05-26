@@ -25,6 +25,7 @@ from .deepseek_client import DeepSeekClient, clean_code
 from .dashboard_snapshot import maybe_refresh_dashboard_snapshot
 from .fast_expression import refresh_operator_cache_from_platform, validate_fast_expression
 from .logging_setup import DISCLAIMER, setup_logging
+from .legacy_bridge.integration import build_legacy_observer, safe_observe
 from .models import SIMULATE_URL, QualityReport, SimulationResult, TemplateFailure, TemplateItem, TemplateSuccess
 from .paths import ITERATION_LOG_FIELDS, ITERATION_LOG_FILE, append_csv, ensure_runtime_files, now_ts
 from .platform_sc import apply_correlation_quality, sc_payload_from_metrics, strong_feedback_allowed
@@ -87,6 +88,8 @@ async def main(argv: list[str] | None = None, *, experiment_service: Any | None 
     logging.info(DISCLAIMER.replace("\n", " | "))
 
     config = load_config()
+    legacy_observer = build_legacy_observer(config)
+    safe_observe(legacy_observer, "on_workflow_start", current_phase="legacy_official_workflow")
     if args.max_templates is not None:
         config.max_templates = args.max_templates
     elif not args.use_split and (args.template_file or args.template_text):
@@ -153,7 +156,7 @@ async def main(argv: list[str] | None = None, *, experiment_service: Any | None 
             await supervisor.close_session(bootstrap_session, persist_storage=True)
         for item in templates:
             try:
-                success = await process_one_template(supervisor, ds, config, item, experiment_service=experiment_service, decision_snapshot_service=decision_snapshot_service)
+                success = await process_one_template(supervisor, ds, config, item, experiment_service=experiment_service, decision_snapshot_service=decision_snapshot_service, legacy_observer=legacy_observer)
                 successes.append(success)
                 print_success(success)
             except TemplateFailedError as exc:
@@ -166,6 +169,7 @@ async def main(argv: list[str] | None = None, *, experiment_service: Any | None 
             logging.warning("本次明确失败模板：%s/%s", len(failures), len(templates))
         return 0
     finally:
+        safe_observe(legacy_observer, "on_workflow_stop", current_phase="legacy_official_workflow")
         await supervisor.close()
 
 
@@ -214,11 +218,13 @@ def maybe_record_decision_outcome(decision_snapshot_service: Any | None, alpha_i
         return []
 
 
-async def process_one_template(supervisor: BrowserSupervisor, ds: DeepSeekClient, config, item: TemplateItem, *, experiment_service: Any | None = None, decision_snapshot_service: Any | None = None) -> TemplateSuccess:
+async def process_one_template(supervisor: BrowserSupervisor, ds: DeepSeekClient, config, item: TemplateItem, *, experiment_service: Any | None = None, decision_snapshot_service: Any | None = None, legacy_observer: Any | None = None) -> TemplateSuccess:
     logging.info("开始处理模板：%s file=%s source=%s", item.index, item.path, item.source)
+    safe_observe(legacy_observer, "on_template_selected", template_name=item.path or item.name or item.source, template_family=item.source or item.path, iteration=0)
     code, raw = await ds.prepare_alpha(item.code)
     code = ensure_code(code, "DeepSeek 初始优化未返回可用代码")
     alpha_name = f"Auto_Alpha_{item.index:03d}_{now_ts()}"
+    safe_observe(legacy_observer, "on_alpha_generated", alpha_id=alpha_name, template_name=item.path or item.name or item.source, template_family=item.source or item.path, iteration=0, raw_payload={"ds_response_available": bool(raw)})
     iteration = 0
     last_submitted_fingerprint = ""
     automation_retry_count = 0
@@ -472,13 +478,19 @@ async def process_one_template(supervisor: BrowserSupervisor, ds: DeepSeekClient
                 "raw_payload": {"experiment_assignment": assignment.to_dict() if hasattr(assignment, "to_dict") else None, "tracking_only": True},
             },
         )
+        safe_observe(legacy_observer, "on_backtest_submit_start", alpha_id=alpha_id, iteration=iteration, template_name=item.path or item.source, template_family=item.source or item.path, raw_payload={"candidate_source": candidate_source})
         result = await run_platform_backtest_attempt(
             supervisor,
             code=code,
             alpha_name=alpha_name,
             config=config,
             template_file=item.path,
+            legacy_observer=legacy_observer,
+            iteration=iteration,
+            template_name=item.path or item.source,
+            template_family=item.source or item.path,
         )
+        safe_observe(legacy_observer, "on_backtest_submit_done", alpha_id=alpha_id, iteration=iteration, template_name=item.path or item.source, template_family=item.source or item.path, raw_payload={"ok": result.ok, "error": result.error.text if result.error else ""})
         maybe_record_sidecar_post_backtest(sidecar, config, alpha_name=alpha_name, code=code, result=result)
         last_submitted_fingerprint = current_fingerprint
         last_result = result
@@ -558,6 +570,7 @@ async def process_one_template(supervisor: BrowserSupervisor, ds: DeepSeekClient
             }
             maybe_record_experiment_result(experiment_service, alpha_id, failure_context)
             maybe_record_decision_outcome(decision_snapshot_service, alpha_id, failure_context)
+            safe_observe(legacy_observer, "on_recoverable_error", alpha_id=alpha_id, iteration=iteration, template_name=item.path or item.source, template_family=item.source or item.path, message=result.error.text, raw_payload=failure_context)
             if is_syntax_error_text(result.error.text):
                 syntax_error_count += 1
                 fail_if_syntax_exhausted(item, alpha_name, code, result.error.text, syntax_error_count, max_syntax_errors, result.screenshot)
@@ -647,6 +660,7 @@ async def process_one_template(supervisor: BrowserSupervisor, ds: DeepSeekClient
         last_platform_error_key = ""
         recent_platform_error_codes = []
         quality = result.quality or QualityReport(False, "unknown")
+        safe_observe(legacy_observer, "on_parse_result_done", alpha_id=alpha_id, iteration=iteration, template_name=item.path or item.source, template_family=item.source or item.path, parse_status="done", result_status=quality.status, metrics=result.metrics, platform_sc=result.platform_sc)
         if is_result_uncertain_result(result):
             result_uncertain_count += 1
             logging.info(
@@ -698,6 +712,8 @@ async def process_one_template(supervisor: BrowserSupervisor, ds: DeepSeekClient
             family_manager=family_manager,
             platform_sc=result.platform_sc,
         )
+        safe_observe(legacy_observer, "on_reward_update", alpha_id=alpha_id, iteration=iteration, template_name=item.path or item.source, template_family=item.source or item.path, reward=mutation_reward, metrics=result.metrics, platform_sc=result.platform_sc)
+        safe_observe(legacy_observer, "on_candidate_pool_update", alpha_id=alpha_id, iteration=iteration, template_name=item.path or item.source, template_family=item.source or item.path, reward=mutation_reward, raw_payload={"candidate_pool_update": "legacy_record_pending_mutation_result_completed"})
         try:
             evolution_candidate_source = str(candidate_source or "initial_or_untracked")
             evolution_mutation_type = "initial_or_untracked"
@@ -801,6 +817,7 @@ async def process_one_template(supervisor: BrowserSupervisor, ds: DeepSeekClient
         )
 
         if quality.passed or result.template_success:
+            safe_observe(legacy_observer, "on_observability_snapshot", alpha_id=alpha_id, iteration=iteration, template_name=item.path or item.source, template_family=item.source or item.path, raw_payload={"result_status": quality.status, "template_success": result.template_success})
             return TemplateSuccess(
                 item.path,
                 alpha_name,

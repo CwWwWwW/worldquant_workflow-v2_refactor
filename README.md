@@ -172,3 +172,12 @@ python tools/show_final_status.py --no-db --no-logs
 The status reader is fail-open and read-only: missing, stale, corrupt, or locked
 sources become warnings; it does not run collectors, diagnostics, Playwright,
 promotion/rollback, Strategy budget apply, ML training, or workflow actions.
+## Legacy learning state bridge
+
+The legacy official workflow remains the real execution path. `wq_workflow/legacy_bridge/` adds a read-only, fail-open sidecar observer that writes small status files for dashboard, CLI, observability, and later advisory learning:
+
+- `runtime/status/runtime_state.json` for the current workflow snapshot.
+- `runtime/status/recent_events.jsonl` for short recent events.
+- `runtime/status/legacy_learning_evidence.jsonl` for observed legacy evidence.
+
+The bridge does not control legacy execution and does not change reward, CandidatePool behavior, alpha/template generation, platform automation, Governance hard flags, Strategy Budget, promotion, or rollback. Payloads are truncated/redacted and the dashboard/CLI/observability integrations are read-only.

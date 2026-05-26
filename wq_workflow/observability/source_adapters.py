@@ -116,7 +116,28 @@ class WorkflowStatusAdapter(BaseSourceAdapter):
             metrics.append(self._metric("workflow.last_run_at", last, metric_type="timestamp", unit=None))
         else:
             warnings.append("workflow_log_missing")
-        return self._result(metrics=metrics, warnings=warnings, available=db_available or iter_path.exists() or log_path.exists(), table_names=table_names, last_updated_at=last, raw_payload={"db_path": str(self.db_path)})
+        runtime_path = getattr(self.config, "legacy_runtime_state_path", "runtime/status/runtime_state.json")
+        ok, runtime_payload, runtime_warnings, runtime_stale, runtime_mtime = self._status(runtime_path)
+        warnings.extend(runtime_warnings)
+        metrics.append(self._metric("workflow.runtime_state_available", ok, metric_type="status", unit=None))
+        metrics.append(self._metric("workflow.runtime_state_stale", runtime_stale, metric_type="status", unit=None))
+        if runtime_payload:
+            metrics.append(self._metric("workflow.latest_state", str(runtime_payload.get("current_state") or "unknown"), metric_type="status", unit=None))
+            if runtime_payload.get("current_iteration") is not None:
+                metrics.append(self._metric("workflow.latest_iteration", safe_int_value(runtime_payload.get("current_iteration"), 0)))
+        recent_events = []
+        recent_path = _resolve(self.root, getattr(self.config, "legacy_recent_events_path", "runtime/status/recent_events.jsonl"), "runtime/status/recent_events.jsonl")
+        try:
+            from wq_workflow.legacy_bridge.recent_events import RecentEventReader
+
+            recent_events = RecentEventReader(recent_path).summarize_recent(limit=50)
+        except Exception as exc:
+            warnings.append(f"recent_events_read_failed:{exc}")
+        metrics.append(self._metric("workflow.recent_event_count", len(recent_events)))
+        recent_error_count = sum(1 for event in recent_events if str(event.get("severity") or event.get("level") or "").lower() in {"error", "critical"})
+        metrics.append(self._metric("workflow.recent_error_count", recent_error_count))
+        updated = runtime_mtime or last
+        return self._result(metrics=metrics, warnings=warnings, available=db_available or iter_path.exists() or log_path.exists() or ok, table_names=table_names, last_updated_at=updated, raw_payload={"db_path": str(self.db_path), "runtime_state": runtime_payload, "recent_event_count": len(recent_events)})
 
 
 class MLMetricsAdapter(BaseSourceAdapter):

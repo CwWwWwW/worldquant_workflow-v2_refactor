@@ -51,10 +51,15 @@ class DashboardRuntimeStatus:
     current_iteration: int | None = None
     current_state: str | None = None
     platform_waiting: bool | None = None
+    platform_progress: float | None = None
     parse_waiting: bool | None = None
+    parse_status: str | None = None
     sc_check_status: str | None = None
+    last_reward: float | None = None
+    last_sc_value: float | None = None
     last_event_at: str | None = None
     recent_events: list[dict[str, Any]] = field(default_factory=list)
+    legacy_evidence_summary: dict[str, Any] = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:

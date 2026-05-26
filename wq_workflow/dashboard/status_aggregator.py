@@ -37,16 +37,22 @@ class DashboardStatusAggregator:
         self._source_statuses: list[DashboardSourceStatus] = []
         self._db_summary: dict[str, Any] = {}
         self._log_summary: dict[str, Any] = {"events": [], "errors": []}
+        self._bridge_events: dict[str, Any] = {"events": []}
+        self._legacy_evidence_summary: dict[str, Any] = {"by_type": {}, "recent": []}
 
     def build_snapshot(self) -> DashboardSnapshot:
         generated_at = _now()
         payloads, statuses = self.sources.read_status_payloads()
         db_status, db_summary = self.sources.read_db_summary(enabled=self.include_db)
         log_status, log_summary = self.sources.read_log_summary(enabled=self.include_logs)
+        bridge_event_status, bridge_events = self.sources.read_recent_events_summary(limit=20)
+        evidence_status, evidence_summary = self.sources.read_legacy_evidence_summary(limit=200)
         self._payloads = payloads
         self._db_summary = db_summary
         self._log_summary = log_summary
-        self._source_statuses = statuses + [db_status, log_status]
+        self._bridge_events = bridge_events
+        self._legacy_evidence_summary = evidence_summary
+        self._source_statuses = statuses + [db_status, log_status, bridge_event_status, evidence_status]
         global_warnings = []
         for status in self._source_statuses:
             global_warnings.extend([f"{status.source}:{w}" for w in status.warnings])
@@ -62,31 +68,39 @@ class DashboardStatusAggregator:
                 "status_payload_keys": sorted(payloads.keys()),
                 "db_summary": db_summary,
                 "log_errors": log_summary.get("errors", []),
+                "legacy_evidence_summary": evidence_summary,
             },
         )
 
     def load_runtime_status(self, *, generated_at: str | None = None) -> DashboardRuntimeStatus:
         events = self.get_recent_events(limit=20)
         last = events[-1] if events else {}
-        state = _normalize_state(str(last.get("state") or "UNKNOWN"))
+        runtime_state = self._payloads.get("runtime_state") if isinstance(self._payloads.get("runtime_state"), dict) else {}
+        bridge_available = bool(runtime_state)
+        state = _normalize_state(str(runtime_state.get("current_state") or last.get("state") or "UNKNOWN"))
         pid = _read_pid(self.root / "logs" / "workflow_active.pid")
-        workflow_running = _process_running(pid) if pid else False
-        if not events and not workflow_running:
+        workflow_running = runtime_state.get("workflow_running") if "workflow_running" in runtime_state else (_process_running(pid) if pid else False)
+        if not events and not workflow_running and not bridge_available:
             state = "IDLE"
         return DashboardRuntimeStatus(
             generated_at=generated_at or _now(),
             workflow_running=workflow_running,
-            current_phase=_phase_from_payloads(self._payloads),
-            current_template=_first_event_value(events, "template"),
-            current_alpha_id=_first_event_value(events, "alpha_id"),
-            current_iteration=_first_int_event_value(events, "iteration"),
+            current_phase=str(runtime_state.get("current_phase") or _phase_from_payloads(self._payloads) or "") or None,
+            current_template=str(runtime_state.get("current_template") or _first_event_value(events, "template") or "") or None,
+            current_alpha_id=str(runtime_state.get("current_alpha_id") or _first_event_value(events, "alpha_id") or "") or None,
+            current_iteration=_int_or_none(runtime_state.get("current_iteration")) or _first_int_event_value(events, "iteration"),
             current_state=state,
-            platform_waiting=state == "WAIT_RESULT",
-            parse_waiting=state == "PARSE_RESULT",
-            sc_check_status="running" if state == "PLATFORM_SC_CHECK" else ("unknown" if state == "UNKNOWN" else "idle"),
-            last_event_at=str(last.get("time") or "") if last else None,
+            platform_waiting=runtime_state.get("platform_waiting") if "platform_waiting" in runtime_state else state == "WAIT_RESULT",
+            platform_progress=_float_or_none(runtime_state.get("platform_progress")),
+            parse_waiting=runtime_state.get("parse_waiting") if "parse_waiting" in runtime_state else state == "PARSE_RESULT",
+            parse_status=str(runtime_state.get("parse_status") or "") or None,
+            sc_check_status=str(runtime_state.get("sc_check_status") or ("running" if state == "PLATFORM_SC_CHECK" else ("unknown" if state == "UNKNOWN" else "idle"))),
+            last_reward=_float_or_none(runtime_state.get("last_reward")),
+            last_sc_value=_float_or_none(runtime_state.get("last_sc_value")),
+            last_event_at=str(runtime_state.get("last_event_at") or last.get("time") or last.get("timestamp") or "") or None,
             recent_events=events,
-            warnings=[] if events else ["recent_events_unavailable"],
+            legacy_evidence_summary=self._legacy_evidence_summary.get("by_type", {}) if isinstance(self._legacy_evidence_summary, dict) else {},
+            warnings=[] if (events or bridge_available) else ["recent_events_unavailable"],
         )
 
     def load_ml_status(self) -> DashboardMLStatus:
@@ -179,6 +193,9 @@ class DashboardStatusAggregator:
         return list(self._source_statuses)
 
     def get_recent_events(self, limit: int = 20) -> list[dict[str, Any]]:
+        bridge_events = self._bridge_events.get("events") if isinstance(self._bridge_events, dict) else []
+        if bridge_events:
+            return list(bridge_events or [])[-max(1, int(limit)) :]
         events = self._log_summary.get("events") if isinstance(self._log_summary, dict) else []
         return list(events or [])[-max(1, int(limit)) :]
 
@@ -212,7 +229,7 @@ def _process_running(pid: int | None) -> bool:
 
 def _normalize_state(value: str) -> str:
     upper = (value or "").upper()
-    known = ["WAIT_RESULT", "PARSE_RESULT", "PLATFORM_SC_CHECK", "GOVERNANCE_CHECK", "STRATEGY_UPDATE", "OBSERVABILITY_READY", "ERROR_FATAL", "ERROR_RECOVERABLE", "GENERATING_TEMPLATE", "SUBMITTING_BACKTEST", "STARTING", "IDLE"]
+    known = ["WAIT_RESULT", "PARSE_RESULT", "PLATFORM_SC_CHECK", "GOVERNANCE_CHECK", "STRATEGY_UPDATE", "REWARD_UPDATE", "CANDIDATE_POOL_UPDATE", "SUCCESS_RESULT", "OBSERVABILITY_READY", "ERROR_FATAL", "ERROR_RECOVERABLE", "GENERATING_TEMPLATE", "SUBMITTING_BACKTEST", "STARTING", "IDLE"]
     for state in known:
         if state in upper:
             return state
@@ -343,3 +360,12 @@ def _dedupe(values: list[str]) -> list[str]:
             seen.add(value)
             out.append(value)
     return out
+
+
+def _float_or_none(value: Any) -> float | None:
+    try:
+        if value is None or value == "":
+            return None
+        return float(value)
+    except Exception:
+        return None

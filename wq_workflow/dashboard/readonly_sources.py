@@ -29,6 +29,7 @@ DEFAULT_STATUS_FILES: dict[str, str] = {
     "experiment_report": "runtime/status/experiment_report.json",
     "governance_status": "runtime/status/governance_status.json",
     "ml_status": "runtime/status/ml_status.json",
+    "runtime_state": "runtime/status/runtime_state.json",
 }
 
 DEFAULT_LOG_FILES = [
@@ -99,6 +100,57 @@ class DashboardReadonlySources:
         except Exception as exc:
             warnings.append(f"read_failed:{type(exc).__name__}:{exc}")
             return DashboardSourceStatus(source=source, available=False, stale=False, path=str(p), warning_count=len(warnings), warnings=warnings), {}
+
+
+    def read_recent_events_summary(self, *, limit: int = 20) -> tuple[DashboardSourceStatus, dict[str, Any]]:
+        path = self._resolve("runtime/status/recent_events.jsonl")
+        try:
+            from wq_workflow.legacy_bridge.recent_events import RecentEventReader
+
+            events = RecentEventReader(path).summarize_recent(limit=limit)
+            available = path.exists()
+            warnings = [] if available else ["missing"]
+            return (
+                DashboardSourceStatus(
+                    source="recent_events",
+                    available=available,
+                    stale=False,
+                    path=str(path),
+                    warning_count=len(warnings),
+                    summary={"event_count": len(events)},
+                    warnings=warnings,
+                ),
+                {"events": events},
+            )
+        except Exception as exc:
+            warning = f"read_failed:{type(exc).__name__}:{exc}"
+            return DashboardSourceStatus(source="recent_events", available=False, path=str(path), warning_count=1, warnings=[warning]), {"events": []}
+
+    def read_legacy_evidence_summary(self, *, limit: int = 200) -> tuple[DashboardSourceStatus, dict[str, Any]]:
+        path = self._resolve("runtime/status/legacy_learning_evidence.jsonl")
+        try:
+            from wq_workflow.legacy_bridge.evidence import LegacyLearningEvidenceReader
+
+            reader = LegacyLearningEvidenceReader(path)
+            by_type = reader.summarize_by_type(limit=limit)
+            recent = reader.summarize_recent(limit=min(20, limit))
+            available = path.exists()
+            warnings = [] if available else ["missing"]
+            return (
+                DashboardSourceStatus(
+                    source="legacy_learning_evidence",
+                    available=available,
+                    stale=False,
+                    path=str(path),
+                    warning_count=len(warnings),
+                    summary={"type_count": len(by_type), "recent_count": len(recent)},
+                    warnings=warnings,
+                ),
+                {"by_type": by_type, "recent": recent},
+            )
+        except Exception as exc:
+            warning = f"read_failed:{type(exc).__name__}:{exc}"
+            return DashboardSourceStatus(source="legacy_learning_evidence", available=False, path=str(path), warning_count=1, warnings=[warning]), {"by_type": {}, "recent": []}
 
     def read_db_summary(self, *, enabled: bool = True) -> tuple[DashboardSourceStatus, dict[str, Any]]:
         if not enabled:
