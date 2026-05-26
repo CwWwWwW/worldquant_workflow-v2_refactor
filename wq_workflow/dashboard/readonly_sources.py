@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 import time
 from datetime import datetime, timezone
@@ -49,12 +50,14 @@ class DashboardReadonlySources:
         stale_after_seconds: int = 86_400,
         db_path: str | Path | None = None,
         log_paths: list[str | Path] | None = None,
+        max_json_bytes: int = 5_242_880,
     ) -> None:
         self.root = Path(root or paths.ROOT)
-        self.status_files = dict(status_files or DEFAULT_STATUS_FILES)
+        self.status_files = dict(DEFAULT_STATUS_FILES if status_files is None else status_files)
         self.stale_after_seconds = max(0, int(stale_after_seconds))
+        self.max_json_bytes = max(1, int(max_json_bytes or 5_242_880))
         self.db_path = self._resolve(db_path or "runtime/db/workflow.db")
-        self.log_paths = [self._resolve(p) for p in (log_paths or DEFAULT_LOG_FILES)]
+        self.log_paths = _dedupe_paths([self._resolve(p) for p in (log_paths or DEFAULT_LOG_FILES)])
         self.log_summarizer = LogSummarizer()
 
     def read_status_payloads(self) -> tuple[dict[str, Any], list[DashboardSourceStatus]]:
@@ -74,7 +77,28 @@ class DashboardReadonlySources:
             return DashboardSourceStatus(source=source, available=False, stale=False, path=str(p), warning_count=1, warnings=warnings), {}
         try:
             stat = p.stat()
-            stale = self.stale_after_seconds > 0 and (time.time() - stat.st_mtime) > self.stale_after_seconds
+        except Exception as exc:
+            warnings.append(f"read_failed:{type(exc).__name__}:{exc}")
+            return DashboardSourceStatus(source=source, available=False, stale=False, path=str(p), warning_count=len(warnings), warnings=warnings), {}
+        stale = self.stale_after_seconds > 0 and (time.time() - stat.st_mtime) > self.stale_after_seconds
+        if stat.st_size > self.max_json_bytes:
+            warnings.append(f"source_too_large:{source}:{stat.st_size}")
+            if stale:
+                warnings.append("stale")
+            return (
+                DashboardSourceStatus(
+                    source=source,
+                    available=False,
+                    stale=stale,
+                    path=str(p),
+                    updated_at=_mtime_iso(stat.st_mtime),
+                    warning_count=len(warnings),
+                    summary={"size_bytes": stat.st_size, "max_json_bytes": self.max_json_bytes},
+                    warnings=warnings,
+                ),
+                {},
+            )
+        try:
             text = p.read_text(encoding="utf-8-sig")
             value = json.loads(text)
             if not isinstance(value, dict):
@@ -99,7 +123,7 @@ class DashboardReadonlySources:
             )
         except Exception as exc:
             warnings.append(f"read_failed:{type(exc).__name__}:{exc}")
-            return DashboardSourceStatus(source=source, available=False, stale=False, path=str(p), warning_count=len(warnings), warnings=warnings), {}
+            return DashboardSourceStatus(source=source, available=False, stale=stale, path=str(p), warning_count=len(warnings), warnings=warnings), {}
 
 
     def read_recent_events_summary(self, *, limit: int = 20) -> tuple[DashboardSourceStatus, dict[str, Any]]:
@@ -107,14 +131,18 @@ class DashboardReadonlySources:
         try:
             from wq_workflow.legacy_bridge.recent_events import RecentEventReader
 
-            events = RecentEventReader(path).summarize_recent(limit=limit)
             available = path.exists()
-            warnings = [] if available else ["missing"]
+            stale = self._stale(path) if available else False
+            reader = RecentEventReader(path)
+            events = reader.summarize_recent(limit=limit) if available else []
+            warnings = list(getattr(reader, "warnings", []) or []) if available else ["missing_source"]
+            if stale:
+                warnings.append("stale_source:recent_events")
             return (
                 DashboardSourceStatus(
                     source="recent_events",
                     available=available,
-                    stale=False,
+                    stale=stale,
                     path=str(path),
                     warning_count=len(warnings),
                     summary={"event_count": len(events)},
@@ -132,15 +160,19 @@ class DashboardReadonlySources:
             from wq_workflow.legacy_bridge.evidence import LegacyLearningEvidenceReader
 
             reader = LegacyLearningEvidenceReader(path)
-            by_type = reader.summarize_by_type(limit=limit)
-            recent = reader.summarize_recent(limit=min(20, limit))
             available = path.exists()
-            warnings = [] if available else ["missing"]
+            stale = self._stale(path) if available else False
+            by_type = reader.summarize_by_type(limit=limit) if available else {}
+            warnings = list(getattr(reader, "warnings", []) or []) if available else ["missing_source"]
+            recent = reader.summarize_recent(limit=min(20, limit)) if available else []
+            warnings = _dedupe_strings(warnings + list(getattr(reader, "warnings", []) or []))
+            if stale:
+                warnings.append("stale_source:legacy_learning_evidence")
             return (
                 DashboardSourceStatus(
                     source="legacy_learning_evidence",
                     available=available,
-                    stale=False,
+                    stale=stale,
                     path=str(path),
                     warning_count=len(warnings),
                     summary={"type_count": len(by_type), "recent_count": len(recent)},
@@ -212,7 +244,8 @@ class DashboardReadonlySources:
             elif path.exists():
                 warnings.append(f"empty_or_unreadable:{path.name}")
         all_text = "\n".join(combined)
-        events = self.log_summarizer.extract_recent_events(all_text, limit=limit)
+        events = _dedupe_events(self.log_summarizer.extract_recent_events(all_text, limit=max(limit * 4, limit)))
+        events = events[-max(1, int(limit)) :]
         errors = self.log_summarizer.extract_error_summaries(all_text, limit=5)
         available = bool(paths_read)
         return (
@@ -231,6 +264,13 @@ class DashboardReadonlySources:
         p = Path(path)
         return p if p.is_absolute() else self.root / p
 
+    def _stale(self, path: Path) -> bool:
+        try:
+            stat = path.stat()
+            return self.stale_after_seconds > 0 and (time.time() - stat.st_mtime) > self.stale_after_seconds
+        except Exception:
+            return False
+
 
 def _mtime_iso(value: float) -> str:
     return datetime.fromtimestamp(value, tz=timezone.utc).isoformat()
@@ -246,6 +286,49 @@ def _summarize_payload(payload: dict[str, Any]) -> dict[str, Any]:
         else:
             summary[key] = value
     return summary
+
+
+def _path_key(path: Path) -> str:
+    try:
+        resolved = path.resolve(strict=False)
+    except Exception:
+        try:
+            resolved = path.absolute()
+        except Exception:
+            resolved = path
+    return os.path.normcase(str(resolved))
+
+
+def _dedupe_paths(paths_to_read: list[Path]) -> list[Path]:
+    seen: set[str] = set()
+    result: list[Path] = []
+    for path in paths_to_read:
+        key = _path_key(path)
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(path)
+    return result
+
+
+def _dedupe_events(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    seen: set[tuple[str, str, str]] = set()
+    result: list[dict[str, Any]] = []
+    for event in events:
+        key = (
+            str(event.get("timestamp") or event.get("time") or ""),
+            str(event.get("level") or ""),
+            str(event.get("message") or event),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(event)
+    return result
+
+
+def _dedupe_strings(values: list[str]) -> list[str]:
+    return list(dict.fromkeys(str(value) for value in values if value not in (None, "")))
 
 
 def _count(conn: sqlite3.Connection, table: str) -> int:

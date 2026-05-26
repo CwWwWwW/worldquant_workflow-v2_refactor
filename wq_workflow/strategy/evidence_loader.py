@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterator, Sequence
 
+from wq_workflow import paths
 from wq_workflow.data.json_utils import json_loads_safe, safe_float, safe_int
 from .schema import StrategyEvidence, utc_now_iso
 
@@ -33,7 +35,16 @@ _ALLOWED_TABLES = {
 
 
 class StrategyEvidenceLoader:
-    def __init__(self, *, storage: Any | None = None, db_path: str | Path | None = None, config: Any | None = None, logger: Any | None = None, read_only: bool = True) -> None:
+    def __init__(
+        self,
+        *,
+        storage: Any | None = None,
+        db_path: str | Path | None = None,
+        config: Any | None = None,
+        logger: Any | None = None,
+        read_only: bool = True,
+        root_dir: str | Path | None = None,
+    ) -> None:
         self.storage = storage
         path = db_path if db_path is not None else getattr(getattr(storage, "config", None), "db_path", None)
         if path is None and config is not None:
@@ -42,7 +53,9 @@ class StrategyEvidenceLoader:
         self.config = config
         self.logger = logger
         self.read_only = bool(read_only)
+        self.root_dir = Path(root_dir or paths.ROOT)
         self.warnings: list[str] = []
+        self._warning_keys: set[str] = set()
 
     @contextmanager
     def connection(self) -> Iterator[sqlite3.Connection]:
@@ -125,8 +138,7 @@ class StrategyEvidenceLoader:
                 reason_codes=[str(row.get("verdict") or "replay_comparison")],
                 raw_payload=dict(row),
             ))
-        if not self._read_status_json(getattr(self.config, "offline_replay_status_path", "runtime/status/offline_replay_report.json")):
-            self._warn("offline_replay_report_missing")
+        self._read_status_json(getattr(self.config, "offline_replay_status_path", "runtime/status/offline_replay_report.json"))
         return evidence
 
     def load_counterfactual_evidence(self) -> list[StrategyEvidence]:
@@ -157,8 +169,7 @@ class StrategyEvidenceLoader:
             if (safe_int(row.get("high_risk_count"), 0) or 0) > 0:
                 flags.append("high_risk_estimate")
             evidence.append(StrategyEvidence(evidence_id=_evidence_id("counterfactual_summary", row.get("summary_id"), row.get("decision_type")), strategy_id="counterfactual_supported_policy", evidence_type="counterfactual_summary", sample_count=safe_int(row.get("estimate_count"), 0) or 0, counterfactual_confidence=self._confidence_from_sample(safe_int(row.get("medium_or_high_confidence_count"), 0) or 0), risk_flags=flags, reason_codes=["counterfactual_summary_estimated_not_actual"], raw_payload={**dict(row), "estimated_not_observed": True, "actual_outcome": False}))
-        if not self._read_status_json(getattr(self.config, "counterfactual_status_path", "runtime/status/counterfactual_report.json")):
-            self._warn("counterfactual_report_missing")
+        self._read_status_json(getattr(self.config, "counterfactual_status_path", "runtime/status/counterfactual_report.json"))
         return evidence
 
     def load_governance_evidence(self) -> list[StrategyEvidence]:
@@ -211,14 +222,24 @@ class StrategyEvidenceLoader:
     def _read_status_json(self, path_value: str | Path | None) -> dict[str, Any]:
         if not path_value:
             return {}
-        path = Path(path_value)
-        if not path.is_absolute():
-            path = Path.cwd() / path
+        path = self._resolve_status_path(path_value)
+        source = _status_source_name(path)
         try:
-            payload = json_loads_safe(path.read_text(encoding="utf-8"), {}) if path.exists() else {}
+            if not path.exists():
+                self._warn_once(f"missing_status:{source}", f"missing_status:{source}")
+                return {}
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(payload, dict):
+                self._warn_once(f"invalid_status:{source}", f"invalid_status:{source}")
+                return {}
             return payload if isinstance(payload, dict) else {}
-        except Exception:
+        except Exception as exc:
+            self._warn_once(f"invalid_status:{source}", f"invalid_status:{source}:{type(exc).__name__}")
             return {}
+
+    def _resolve_status_path(self, path_value: str | Path) -> Path:
+        path = Path(path_value)
+        return path if path.is_absolute() else self.root_dir / path
 
     def _table_exists(self, conn: sqlite3.Connection, table: str) -> bool:
         if not self._is_allowed_table(table):
@@ -238,15 +259,15 @@ class StrategyEvidenceLoader:
             with self.connection() as conn:
                 conn.row_factory = sqlite3.Row
                 if not self._table_exists(conn, source_name):
-                    self._warn(f"missing_table:{source_name}")
+                    self._warn_once(f"missing_table:{source_name}", f"missing_table:{source_name}")
                     return []
                 rows = conn.execute(sql, bound_params).fetchall()
                 return [dict(row) for row in rows if hasattr(row, "keys")]
         except FileNotFoundError:
-            self._warn(f"missing_db:{self.db_path}")
+            self._warn_once("missing_db", f"missing_db:{self.db_path}")
             return []
         except Exception as exc:
-            self._warn(f"query_failed:{source_name}:{exc}")
+            self._warn_once(f"query_failed:{source_name}:{type(exc).__name__}", f"query_failed:{source_name}:{exc}")
             return []
 
     def _one(self, sql: str, source_name: str, params: Sequence[Any] | None = None) -> dict[str, Any] | None:
@@ -271,3 +292,13 @@ class StrategyEvidenceLoader:
                 self.logger.warning("strategy evidence loader: %s", message)
         except Exception:
             pass
+
+    def _warn_once(self, key: str, message: str) -> None:
+        if key in self._warning_keys:
+            return
+        self._warning_keys.add(key)
+        self._warn(message)
+
+
+def _status_source_name(path: Path) -> str:
+    return path.stem or str(path)

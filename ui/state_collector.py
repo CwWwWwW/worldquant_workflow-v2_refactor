@@ -363,29 +363,14 @@ def _process_running(pid: int) -> bool:
     now = time.monotonic()
     if cached and now - cached[0] <= PROCESS_RUNNING_CACHE_TTL_SECONDS:
         return cached[1]
-    if os.name == "nt":
-        try:
-            import subprocess
-
-            result = subprocess.run(
-                ["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH"],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                check=False,
-            )
-            output = result.stdout.decode("utf-8", errors="ignore") + result.stderr.decode("utf-8", errors="ignore")
-            running = str(pid) in output
-            _PROCESS_RUNNING_CACHE[pid] = (now, running)
-            return running
-        except Exception:
-            return False
     try:
-        os.kill(pid, 0)
-        _PROCESS_RUNNING_CACHE[pid] = (now, True)
-        return True
-    except OSError:
-        _PROCESS_RUNNING_CACHE[pid] = (now, False)
-        return False
+        from wq_workflow.dashboard.status_aggregator import _safe_pid_exists
+
+        running = bool(_safe_pid_exists(pid))
+    except Exception:
+        running = False
+    _PROCESS_RUNNING_CACHE[pid] = (now, running)
+    return running
 
 
 def _read_json_list(path: Path, errors: list[str]) -> list[dict[str, Any]]:

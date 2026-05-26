@@ -68,17 +68,18 @@ class LegacyLearningEvidenceBuilder:
 
 
 class LegacyLearningEvidenceWriter:
-    def __init__(self, path: str | Path = DEFAULT_LEGACY_EVIDENCE_PATH, *, root: str | Path | None = None, enabled: bool = True, max_bytes: int = 10_485_760) -> None:
+    def __init__(self, path: str | Path = DEFAULT_LEGACY_EVIDENCE_PATH, *, root: str | Path | None = None, enabled: bool = True, max_bytes: int = 10_485_760, fsync: bool = False) -> None:
         self.root = Path(root or paths.ROOT)
         self.path = resolve_path(self.root, path)
         self.enabled = bool(enabled)
         self.max_bytes = int(max_bytes or 0)
+        self.fsync = bool(fsync)
 
     def append_evidence(self, evidence: LegacyLearningEvidence) -> bool:
         if not self.enabled:
             return False
         try:
-            return append_jsonl_direct(self.path, evidence.to_dict(), max_bytes=self.max_bytes)
+            return append_jsonl_direct(self.path, evidence.to_dict(), max_bytes=self.max_bytes, fsync=self.fsync)
         except Exception:
             return False
 
