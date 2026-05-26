@@ -18,3 +18,16 @@ This package contains the Phase 7 observability layer.
 7C is reserved for Explainability / Run Report / Decision Trace. Phase 7 work continues on `phase7-observability` until all Phase 7 sub-phases are complete; do not merge main before Phase 7 is complete.
 
 `observability_auto_collect`, `observability_diagnostics_auto_run`, external alert emit, and automatic remediation all default to `false`.
+
+
+## Phase 7C: Explainability / Run Report / Decision Trace
+
+7C builds on 7A metrics and 7B advisory alerts/diagnosis. It loads read-only evidence from workflow, ML, Governance, Experiment, Decision Snapshot, Offline Replay, Counterfactual, Strategy Scoreboard, Strategy Portfolio, Strategy Budget, and Observability reports, then produces explain-only artifacts:
+
+- `runtime/status/run_explain_report.json`
+- `runtime/status/daily_observability_report.json`
+- `runtime/status/stage7_summary_report.json`
+
+The 7C layer is for human review. It does not send external notifications, does not perform automatic remediation, does not stop or roll back the workflow, does not change reward semantics or CandidatePool state, does not modify Governance hard-decision flags, does not apply Strategy budget, does not execute promotion or rollback, does not train models, and does not treat counterfactual estimates as actual outcomes.
+
+Defaults are conservative: `enable_run_explainability=false`, `observability_explainability_auto_run=false`, `observability_explainability_mode=explain_only`, and `observability_explanation_auto_action=false`. Phase 7A/7B/7C completion should wait for explicit user instruction before merging to `main`.

@@ -147,3 +147,12 @@ Phase 7A adds a metrics-only observability layer in `wq_workflow/observability/`
 Phase 7B adds advisory-only Drift / Alert / Health Diagnosis on top of 7A metrics. It writes `runtime/status/observability_alerts.json` and `runtime/status/health_diagnosis.json` from local metrics, source statuses, and SQLite observability history.
 
 7B does not send external notifications, does not perform automatic remediation, does not stop or roll back the workflow, does not change alpha generation, parent selection, mutation policy, reward semantics, CandidatePool, platform automation, WAIT_RESULT/PARSE_RESULT, SC collection, Governance hard-decision flags, or Strategy budget allocation, and does not call promotion/rollback or train models. `observability_auto_collect`, `observability_diagnostics_auto_run`, external alert emit, and remediation all default to `false`; alert mode is advisory. Phase 7C is reserved for Explainability / Run Report / Decision Trace. Phase 7 work continues on `phase7-observability` until all Phase 7 sub-phases are complete; do not merge main before Phase 7 is complete.
+
+
+### Phase 7C Explainability / Run Report / Decision Trace
+
+Phase 7C adds an explain-only layer on top of Phase 7A metrics and Phase 7B advisory health diagnosis. It reads existing evidence from Strategy, Strategy Portfolio, Strategy Budget, Decision Snapshot, Offline Replay, Counterfactual, Experiment, Governance, and Observability outputs, then writes `runtime/status/run_explain_report.json`, `runtime/status/daily_observability_report.json`, and `runtime/status/stage7_summary_report.json`.
+
+This phase is report-only. It does not send external notifications, perform automatic remediation, stop or roll back the workflow, change alpha generation, parent selection, mutation policy, reward semantics, CandidatePool state, platform automation, WAIT_RESULT/PARSE_RESULT, SC collection, Governance hard-decision flags, or Strategy budget allocation. It does not execute promotion or rollback and does not treat counterfactual estimates as actual outcomes.
+
+Defaults remain conservative: `enable_run_explainability=false`, `observability_explainability_auto_run=false`, `observability_explainability_mode=explain_only`, and `observability_explanation_auto_action=false`. After Phase 7A/7B/7C are complete, merging to `main` should wait for explicit user instruction.

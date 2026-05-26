@@ -55,6 +55,12 @@ def run_startup_healthcheck(
         "ready": False,
         "mode": "advisory",
     }
+    explainability_status: dict[str, Any] = {
+        "enabled": bool(getattr(config, "enable_run_explainability", False)),
+        "ready": False,
+        "mode": "explain_only",
+        "auto_action_allowed": False,
+    }
 
     def warn(message: str) -> None:
         warnings.append(message)
@@ -121,6 +127,37 @@ def run_startup_healthcheck(
                 "ready": not missing_alert_tables and path_ready,
                 "alert_status_path": str(alert_path),
                 "diagnosis_status_path": str(diagnosis_path),
+            })
+            missing_explain_tables: list[str] = []
+            for table in (
+                "observability_explanation_evidence",
+                "observability_decision_traces",
+                "observability_run_explanations",
+                "observability_daily_reports",
+                "observability_stage_reports",
+            ):
+                if table not in tables:
+                    missing_explain_tables.append(table)
+                    warn(f"missing_observability_explainability_table:{table}")
+            explain_paths = [
+                _resolve_path(root_path, getattr(config, "run_explain_report_status_path", "runtime/status/run_explain_report.json")),
+                _resolve_path(root_path, getattr(config, "daily_observability_report_status_path", "runtime/status/daily_observability_report.json")),
+                _resolve_path(root_path, getattr(config, "stage7_summary_report_status_path", "runtime/status/stage7_summary_report.json")),
+            ]
+            explain_path_ready = True
+            for path in explain_paths:
+                try:
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                except Exception as exc:
+                    explain_path_ready = False
+                    warn(f"observability_explainability_status_path_unavailable:{path}:{exc}")
+            if explain_path_ready:
+                auto_fixes.append("observability_explainability_status_paths_ready")
+            explainability_status.update({
+                "ready": not missing_explain_tables and explain_path_ready,
+                "run_report_path": str(explain_paths[0]),
+                "daily_report_path": str(explain_paths[1]),
+                "stage_report_path": str(explain_paths[2]),
             })
         finally:
             conn.close()
@@ -200,7 +237,7 @@ def run_startup_healthcheck(
         except Exception as exc:
             warn(f"governance_startup_check_failed:{exc}")
 
-    result = {"ok": not errors, "mode": mode, "warnings": warnings, "errors": errors, "auto_fixes": auto_fixes, "observability": observability_status, "observability_alerts": observability_alert_status}
+    result = {"ok": not errors, "mode": mode, "warnings": warnings, "errors": errors, "auto_fixes": auto_fixes, "observability": observability_status, "observability_alerts": observability_alert_status, "observability_explainability": explainability_status}
     try:
         audit_path = _resolve_path(root_path, getattr(config, "healthcheck_audit_path", "runtime/audit/healthcheck.jsonl"))
         _json_line(audit_path, {"timestamp": datetime.now().isoformat(timespec="seconds"), **result})

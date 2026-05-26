@@ -359,6 +359,21 @@ def build_app_context(config_path: str | Path | None = None, config: Any | None 
         except Exception as exc:
             logger.warning("observability alert diagnosis initialization skipped: %s", exc)
             ctx.runtime_status["observability_alerts"] = {"ok": bool(getattr(config, "observability_diagnosis_fail_open", True)), "enabled": bool(getattr(config, "enable_observability_alerts", False) or getattr(config, "enable_observability_diagnosis", False)), "fail_open": True, "error": str(exc)}
+        try:
+            from wq_workflow.observability.explainability_service import ExplainabilityService
+
+            explainability_service = ExplainabilityService(
+                config=config,
+                storage=storage,
+                db_path=getattr(config, "storage_db_path", "runtime/db/workflow.db"),
+                logger=logger,
+            )
+            ctx.explainability_service = explainability_service
+            ctx.observability_services["explainability"] = explainability_service
+            ctx.runtime_status["observability_explainability"] = explainability_service.startup_check()
+        except Exception as exc:
+            logger.warning("observability explainability initialization skipped: %s", exc)
+            ctx.runtime_status["observability_explainability"] = {"ok": bool(getattr(config, "observability_explainability_fail_open", True)), "enabled": bool(getattr(config, "enable_run_explainability", False)), "fail_open": True, "mode": "explain_only", "error": str(exc), "auto_action_allowed": False}
     except Exception as exc:
         logger.warning("observability metrics initialization skipped: %s", exc)
         ctx.runtime_status["observability"] = {"ok": bool(getattr(config, "observability_fail_open", True)), "enabled": bool(getattr(config, "enable_observability_metrics", True)), "fail_open": True, "error": str(exc)}

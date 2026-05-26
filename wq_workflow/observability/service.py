@@ -54,7 +54,7 @@ class ObservabilityService:
                 "alerts_enabled": bool(getattr(self.config, "enable_observability_alerts", False)),
                 "drift_detection_enabled": bool(getattr(self.config, "enable_observability_drift_detection", False)),
                 "diagnosis_enabled": bool(getattr(self.config, "enable_observability_diagnosis", False)),
-                "explainability_enabled": False,
+                "explainability_enabled": bool(getattr(self.config, "enable_run_explainability", False)),
             }
             if enabled and bool(getattr(self.config, "observability_auto_collect", False)):
                 result["collect"] = self.collect_metrics()
@@ -124,7 +124,7 @@ class ObservabilityService:
             "alerts_enabled": bool(getattr(self.config, "enable_observability_alerts", False)),
             "drift_detection_enabled": bool(getattr(self.config, "enable_observability_drift_detection", False)),
             "diagnosis_enabled": bool(getattr(self.config, "enable_observability_diagnosis", False)),
-            "explainability_enabled": False,
+            "explainability_enabled": bool(getattr(self.config, "enable_run_explainability", False)),
         }
 
     def _build_collectors(self) -> list[Any]:
