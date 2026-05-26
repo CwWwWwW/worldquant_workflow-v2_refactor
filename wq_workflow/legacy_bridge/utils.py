@@ -148,7 +148,7 @@ def rotate_if_large_direct(path: str | Path, max_bytes: int | None) -> None:
         return
 
 
-def append_jsonl_direct(path: str | Path, payload: dict[str, Any], *, max_bytes: int | None = None) -> bool:
+def append_jsonl_direct(path: str | Path, payload: dict[str, Any], *, max_bytes: int | None = None, fsync: bool = False) -> bool:
     target = Path(path)
     try:
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -157,6 +157,11 @@ def append_jsonl_direct(path: str | Path, payload: dict[str, Any], *, max_bytes:
         with target.open("a", encoding="utf-8") as fh:
             fh.write(line + "\n")
             fh.flush()
+            if fsync:
+                try:
+                    os.fsync(fh.fileno())
+                except Exception:
+                    pass
         return True
     except Exception:
         return False

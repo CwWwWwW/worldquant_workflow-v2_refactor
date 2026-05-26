@@ -79,9 +79,19 @@ class DashboardStatusAggregator:
         bridge_available = bool(runtime_state)
         state = _normalize_state(str(runtime_state.get("current_state") or last.get("state") or "UNKNOWN"))
         pid = _read_pid(self.root / "logs" / "workflow_active.pid")
-        workflow_running = runtime_state.get("workflow_running") if "workflow_running" in runtime_state else (_process_running(pid) if pid else False)
+        warnings: list[str] = []
+        if "workflow_running" in runtime_state:
+            workflow_running = runtime_state.get("workflow_running")
+        elif pid:
+            workflow_running = _process_running(pid)
+            if workflow_running is None:
+                warnings.append("pid_detection_unavailable")
+        else:
+            workflow_running = False
         if not events and not workflow_running and not bridge_available:
             state = "IDLE"
+        if not (events or bridge_available):
+            warnings.append("recent_events_unavailable")
         return DashboardRuntimeStatus(
             generated_at=generated_at or _now(),
             workflow_running=workflow_running,
@@ -100,7 +110,7 @@ class DashboardStatusAggregator:
             last_event_at=str(runtime_state.get("last_event_at") or last.get("time") or last.get("timestamp") or "") or None,
             recent_events=events,
             legacy_evidence_summary=self._legacy_evidence_summary.get("by_type", {}) if isinstance(self._legacy_evidence_summary, dict) else {},
-            warnings=[] if (events or bridge_available) else ["recent_events_unavailable"],
+            warnings=warnings,
         )
 
     def load_ml_status(self) -> DashboardMLStatus:
@@ -215,16 +225,51 @@ def _read_pid(path: Path) -> int | None:
         return None
 
 
-def _process_running(pid: int | None) -> bool:
-    if not pid or pid <= 0:
-        return False
+def _process_running(pid: int | None) -> bool | None:
     try:
-        os.kill(pid, 0)
-        return True
-    except OSError:
-        return False
+        return _safe_pid_exists(pid)
+    except Exception:
+        return None
+
+
+def _safe_pid_exists(pid: int | None) -> bool | None:
+    try:
+        value = int(pid)  # type: ignore[arg-type]
     except Exception:
         return False
+    if value <= 0:
+        return False
+    try:
+        import psutil  # type: ignore
+
+        return bool(psutil.pid_exists(value))
+    except ImportError:
+        pass
+    except Exception:
+        return None
+    if os.name == "nt":
+        try:
+            import ctypes
+
+            process_query_limited_information = 0x1000
+            kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
+            handle = kernel32.OpenProcess(process_query_limited_information, False, value)
+            if handle:
+                try:
+                    kernel32.CloseHandle(handle)
+                except Exception:
+                    pass
+                return True
+            return False
+        except Exception:
+            return None
+    proc = Path("/proc")
+    if proc.exists():
+        try:
+            return (proc / str(value)).exists()
+        except Exception:
+            return None
+    return None
 
 
 def _normalize_state(value: str) -> str:

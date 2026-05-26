@@ -12,17 +12,18 @@ DEFAULT_RECENT_EVENTS_PATH = "runtime/status/recent_events.jsonl"
 
 
 class RecentEventWriter:
-    def __init__(self, path: str | Path = DEFAULT_RECENT_EVENTS_PATH, *, root: str | Path | None = None, enabled: bool = True, max_bytes: int = 5_242_880) -> None:
+    def __init__(self, path: str | Path = DEFAULT_RECENT_EVENTS_PATH, *, root: str | Path | None = None, enabled: bool = True, max_bytes: int = 5_242_880, fsync: bool = False) -> None:
         self.root = Path(root or paths.ROOT)
         self.path = resolve_path(self.root, path)
         self.enabled = bool(enabled)
         self.max_bytes = int(max_bytes or 0)
+        self.fsync = bool(fsync)
 
     def append_event(self, event: RuntimeEvent) -> bool:
         if not self.enabled:
             return False
         try:
-            return append_jsonl_direct(self.path, event.to_dict(), max_bytes=self.max_bytes)
+            return append_jsonl_direct(self.path, event.to_dict(), max_bytes=self.max_bytes, fsync=self.fsync)
         except Exception:
             return False
 

@@ -10,4 +10,6 @@ Outputs:
 
 The observer does not change reward, CandidatePool behavior, template generation, alpha generation, platform automation, Governance hard flags, Strategy Budget, promotion, or rollback. All hooks are fail-open and redact/truncate sensitive or large payloads.
 
-Concurrency note: the bridge JSONL files are designed for the default single main-process writer. Appends are one-record open/write/flush operations and fail open; readers skip corrupt lines with a single warning per read instead of blocking the legacy workflow.
+Concurrency note: the bridge JSONL files are designed for exactly one main-process writer per `runtime/status` directory. Appends are one-record `open("a")` / write / flush operations and fail open; optional `fsync` is available for deployments that prefer durability over throughput, but defaults to off. Rotation is only safe under this single-writer contract and rotation failures are ignored so the legacy workflow is not interrupted.
+
+Dashboard, CLI, observability, and advisory learning integrations must treat these JSONL files as read-only sources. If multiple main workflow processes run at the same time, each process must use a different `runtime/status` directory. Do not configure multiple main processes to append to the same bridge JSONL files. Readers skip corrupt or partial lines with a single warning per read instead of blocking the legacy workflow.
