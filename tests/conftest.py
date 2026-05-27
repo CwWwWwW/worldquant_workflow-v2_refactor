@@ -63,6 +63,7 @@ def isolate_local_config_and_storage(monkeypatch: pytest.MonkeyPatch, tmp_path: 
 
     monkeypatch.setattr(config_module, "CONFIG_FILE", isolated_config)
     monkeypatch.setattr(paths_module, "CONFIG_FILE", isolated_config)
+    monkeypatch.setenv("WQ_STORAGE_MODE", "jsonl_only")
     monkeypatch.setenv("WQ_STORAGE_DB_PATH", str(isolated_db))
 
     _reset_storage_manager()

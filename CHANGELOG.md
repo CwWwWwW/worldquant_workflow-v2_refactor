@@ -17,7 +17,7 @@
 
 - Isolated pytest configuration from local private config.json.
 - Stabilized StrategyPortfolioService workflow compatibility tests.
-- Stabilized storage-backed JSONL write visibility in tests.
+- Stabilized JSONL write visibility in isolated unit tests.
 - Ensured unit tests use temporary storage paths instead of private runtime data.
 
 ### Security
