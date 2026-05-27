@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import fnmatch
 import subprocess
 import zipfile
@@ -115,7 +116,9 @@ def _run_git(root: Path, args: list[str]) -> str | None:
     return completed.stdout.strip()
 
 
-def get_version(root: Path) -> str:
+def get_version(root: Path, explicit_version: str | None = None) -> str:
+    if explicit_version:
+        return explicit_version
     tag = _run_git(root, ["describe", "--tags", "--exact-match"])
     return tag if tag else "dev"
 
@@ -182,8 +185,16 @@ def collect_files(root: Path) -> tuple[list[Path], int]:
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description="Build a clean release archive.")
+    parser.add_argument(
+        "--version",
+        default=None,
+        help="explicit release version for the archive name; defaults to the current git tag or dev",
+    )
+    args = parser.parse_args()
+
     root = Path(__file__).resolve().parents[1]
-    version = get_version(root)
+    version = get_version(root, args.version)
     dist_dir = root / "dist"
     dist_dir.mkdir(exist_ok=True)
     zip_path = dist_dir / f"{PROJECT_NAME}-{version}.zip"

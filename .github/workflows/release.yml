@@ -24,7 +24,7 @@ jobs:
 
       - name: Build release archive
         run: |
-          python tools/build_release.py
+          python tools/build_release.py --version ${{ github.ref_name }}
 
       - name: Upload GitHub Release
         uses: softprops/action-gh-release@v2
