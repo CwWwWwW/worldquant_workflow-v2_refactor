@@ -1,0 +1,44 @@
+name: Feature request
+description: Suggest a safe repository, workflow, or documentation improvement.
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Keep production defaults conservative. Do not request changes that bypass platform rules, access controls, rate limits, or compliance requirements.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What problem should this feature solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposed_solution
+    attributes:
+      label: Proposed solution
+      description: Describe the proposed behavior or documentation change.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives
+      description: What alternatives did you consider?
+    validations:
+      required: false
+  - type: textarea
+    id: production_safety
+    attributes:
+      label: Production safety impact
+      description: Explain whether this affects legacy production defaults, Submit boundaries, or shadow/advisory components.
+    validations:
+      required: true
+  - type: textarea
+    id: compatibility
+    attributes:
+      label: Compatibility impact
+      description: Explain any impact on existing logs, runtime state, memory imports, cache, lineage, reward history, or candidate pool data.
+    validations:
+      required: true

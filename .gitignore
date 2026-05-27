@@ -1,50 +1,75 @@
-# Python cache
+# local config / secrets
+config.json
+.env
+.env.*
+*.secret
+*.secrets
+secrets/
+credentials/
+cookies/
+cookies.json
+browser_state/
+storage_state.json
+*.local.json
+
+# runtime state
+runtime/
+runtime/db/
+*.db
+*.sqlite
+*.sqlite3
+*.db-wal
+*.db-shm
+
+# logs / artifacts
+logs/
+ui_logs/
+migration_logs/
+*.log
+screenshots/
+failure_artifacts/
+artifacts/
+playwright-report/
+test-results/
+.tmp_pytest/
+.coverage
+htmlcov/
+
+# local output
+iterations/
+favorites/
+exports/
+reports/
+returns/
+reward_shadow_logs/
+
+# python
 __pycache__/
 *.py[cod]
 *.pyo
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
-.coverage
-htmlcov/
+.venv/
+venv/
+env/
+dist/
+build/
+*.egg-info/
 
-# Runtime data
-runtime/db/*.db
-runtime/db/*.sqlite
-runtime/db/*.sqlite3
-runtime/models/
-runtime/status/
-runtime/audit/
-runtime/tmp/
-runtime/pytest_tmp/
-runtime/cache/
-runtime/screenshots/
-runtime/failures/
-runtime/logs/
-runtime/debug/
-
-# Logs
-logs/
-ui_logs/
-migration_logs/
-*.log
-
-# Local configs / secrets
-config.json
-cookies.json
-*.local.json
-
-# Temporary files
+# temporary files
 *.tmp
 *.bak
 *.old
 *.disabled.json
-.DS_Store
-Thumbs.db
 
-# Build / release
-dist/
-build/
+# release archives
 release/
 *.zip
 *.7z
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

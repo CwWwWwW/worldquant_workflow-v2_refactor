@@ -1,0 +1,122 @@
+# Phase History
+
+## Refactored Pipeline Status
+
+The refactored pipeline is currently a structural/shadow pipeline. It is not the production official default execution path.
+
+Production execution still defaults to the legacy official workflow path. Recommended production settings:
+
+```json
+{
+  "enable_refactored_pipeline": false,
+  "enable_refactored_pipeline_shadow": true,
+  "allow_observe_only_pipeline": false
+}
+```
+
+Do not enable `enable_refactored_pipeline=true` for production unless all critical steps are no longer observe-only and the full regression suite passes.
+
+The Config Safety Gate / pipeline safety checks will force fallback to the legacy official workflow if critical observe-only steps are detected and `allow_observe_only_pipeline=false`.
+
+## Phase 4A Experiment Tracking
+
+Phase 4A adds experiment tracking only. Each alpha candidate can be tagged with an `experiment_id` / `arm_id`, and completed backtest metrics can be written to experiment result tables and summarized in `runtime/status/experiment_report.json`.
+
+This phase does **not** change alpha generation, reward semantics, CandidatePool scoring, WAIT_RESULT / PARSE_RESULT, platform automation, SC collection, or the legacy official workflow default path. Dynamic budgeting, Bayesian optimization, multi-armed bandits, offline replay, strategy portfolio changes, and dashboards are intentionally deferred to later phases.
+
+## Phase 4 Experiment Layer
+
+Phase 4A adds experiment tracking tables and reports. Phase 4B adds advisory experiment planning and budgeting on top of those summaries. Budget plans protect `legacy_baseline` and `random_exploration`, cap treatment arms, down-weight high-failure/high-SC-risk arms, and up-weight positive-reward/high-quality arms. The budget layer writes SQLite snapshots and the `budgeting` section of `runtime/status/experiment_report.json`.
+
+This layer remains advisory: it does not hard-take over alpha generation, reward semantics, CandidatePool scoring, platform automation, WAIT_RESULT/PARSE_RESULT, SC collection, or the production legacy workflow. Offline Replay, Counterfactual Evaluation, Strategy Portfolio, Observability dashboard, Bayesian optimization, and complex multi-armed bandits are future phases, not Phase 4B.
+
+
+## Phase 5A Decision Snapshot
+
+Phase 5A adds a standardized Decision Snapshot layer under `wq_workflow/offline/`. It records structured snapshots for candidate acceptance, experiment arm selection, budget plan selection, and compatible legacy/shadow decision hooks, then writes true outcomes back by `alpha_id` after results are available.
+
+The status report is written to `runtime/status/decision_snapshot_status.json`. Recording is fail-open and does not change alpha generation, reward semantics, CandidatePool ranking, Governance veto behavior, Experiment Budget advisory behavior, platform automation, WAIT_RESULT/PARSE_RESULT, SC collection, or the production legacy workflow default path.
+
+This phase does **not** implement Replay Engine, Counterfactual Evaluation, off-policy evaluation, strategy promotion, or hard takeover. Those remain future phases.
+
+## Phase 5B Offline Replay Engine
+
+Phase 5B adds an advisory Offline Replay Engine on top of Phase 5A decision snapshots and outcomes. It loads `decision_snapshots` / `decision_outcomes`, replays `actual_chosen`, `legacy`, `model_choice`, `experiment_choice`, and `budget_choice`, and writes replay runs, policy decisions, metrics, baseline comparisons, and `runtime/status/offline_replay_report.json`.
+
+Replay only uses observed outcomes. If a replay policy selects an action different from the historical chosen action, the engine does not copy the historical outcome onto that unexecuted action; it marks the decision with `insufficient_counterfactual_evidence`. Counterfactual evaluation, off-policy estimation, doubly robust estimation, strategy promotion, and hard takeover remain out of scope for Phase 5B.
+
+Defaults remain conservative: `enable_offline_replay=false`, `offline_replay_auto_run=false`, `offline_replay_mode=advisory`, and `enable_counterfactual_evaluation=false`. Replay failures are fail-open and do not change alpha generation, reward semantics, platform automation, CandidatePool behavior, WAIT_RESULT/PARSE_RESULT, SC collection, Governance hard-decision flags, or the production legacy workflow default path.
+
+## Phase 5C Conservative Counterfactual Evaluator
+
+Phase 5C adds an advisory Counterfactual Evaluator under `wq_workflow/offline/`. It consumes Phase 5A decision snapshots/outcomes and Phase 5B replay policy decisions marked `insufficient_counterfactual_evidence`, then uses lightweight nearest-neighbor matching against observed historical outcomes to produce separate counterfactual requests, evidence, estimates, summaries, and `runtime/status/counterfactual_report.json`.
+
+All counterfactual estimates are marked `estimated_not_observed`. Evidence must come from records with real observed outcomes; insufficient support returns `insufficient_evidence`, and high-risk estimates are flagged rather than promoted. Defaults remain conservative: `enable_counterfactual_evaluation=false`, `counterfactual_auto_run=false`, and `counterfactual_mode=advisory`.
+
+This phase does **not** treat estimates as actual outcomes, overwrite `decision_outcomes`, overwrite replay observed outcomes, change reward semantics, change CandidatePool ranking, modify Governance hard-decision flags, promote strategies, perform hard takeover, run doubly robust/off-policy evaluation, train models, alter alpha generation, or change platform automation / WAIT_RESULT / PARSE_RESULT / SC collection.
+
+## Phase 6A Strategy Registry / Scoreboard
+
+Phase 6A adds an advisory-only Strategy Registry / Scoreboard layer under `wq_workflow/strategy/`. It registers legacy, random exploration, experiment budget, ML parent/mutation, replay-supported, counterfactual-supported, governance-safe, and manual/unknown strategy profiles, then reads Experiment / Replay / Counterfactual / Governance / ML evidence to produce conservative strategy scores and `runtime/status/strategy_scoreboard.json`.
+
+Recommendations are advisory only. This phase does **not** implement Champion/Challenger, Strategy Budget Allocator, hard takeover, strategy promotion, model training, automatic budget apply, reward changes, CandidatePool changes, platform automation changes, or Governance hard-decision flag changes. Counterfactual evidence remains estimated-not-observed and is never treated as an actual outcome.
+
+### Phase 6B: Champion / Challenger Strategy Portfolio
+
+Phase 6B introduces an advisory-only Strategy Portfolio layer. It reads Phase 6A strategy scores plus risk evidence and writes `runtime/status/strategy_portfolio_report.json` with conservative `disabled` / `shadow` / `challenger` / `limited_active` / `champion` state recommendations.
+
+The default champion is `legacy_baseline`. This phase does not perform strategy budget allocation, automatic budget apply, hard takeover, true champion replacement, promotion execution, rollback execution, model training, reward changes, CandidatePool changes, platform automation changes, or Governance hard-flag changes. Legacy portfolio/champion/budget modules remain available but isolated.
+
+## Phase 6C Strategy Budget Allocator
+
+Phase 6C adds an advisory-only Strategy Budget Allocator under `wq_workflow/strategy/`. It reads Phase 6B portfolio states and emits conservative budget recommendations to `runtime/status/strategy_budget_report.json`.
+
+The allocator is report-only: every allocation has `auto_apply_allowed=false`; `strategy_budget_auto_apply=false` and `strategy_budget_allocator_auto_apply=false` by default. It does not change real backtest submission logic, alpha generation, parent selection, mutation policy, reward semantics, CandidatePool ranking, platform automation, WAIT_RESULT/PARSE_RESULT, SC collection, or Governance hard-decision flags.
+
+Default policy keeps `legacy_baseline` at a minimum floor of `0.40` and `random_exploration` at a minimum floor of `0.05`. Disabled, governance-blocked, and blocked-risk strategies are reported with zero advisory budget. Shadow, challenger, and limited-active states receive observe/test/scale-limited caps; high-risk, high-SC-risk, and insufficient-evidence strategies are capped conservatively. Ratios are normalized for dashboard/Governance visibility only and are never applied to the workflow scheduler.
+
+Legacy `portfolio`, `champion_challenger`, `budget_allocator`, `promotion`, and `rollback` modules remain import-compatible and isolated. Promotion/rollback tools remain manual and are not called by Phase 6C. The refactored pipeline remains non-production-official by default until a later explicit phase.
+
+## Phase 7 Observability
+
+Phase 7A adds a metrics-only observability layer in `wq_workflow/observability/`. It reads workflow, ML, Governance, Experiment, Offline Replay, Counterfactual, Strategy/Portfolio/Budget, and System status from existing JSON files and SQLite summaries, persists read-only observations into observability tables, and writes `runtime/status/observability_metrics.json`.
+
+Phase 7B adds advisory-only Drift / Alert / Health Diagnosis on top of 7A metrics. It writes `runtime/status/observability_alerts.json` and `runtime/status/health_diagnosis.json` from local metrics, source statuses, and SQLite observability history.
+
+7B does not send external notifications, does not perform automatic remediation, does not stop or roll back the workflow, does not change alpha generation, parent selection, mutation policy, reward semantics, CandidatePool, platform automation, WAIT_RESULT/PARSE_RESULT, SC collection, Governance hard-decision flags, or Strategy budget allocation, and does not call promotion/rollback or train models. `observability_auto_collect`, `observability_diagnostics_auto_run`, external alert emit, and remediation all default to `false`; alert mode is advisory. Phase 7C is reserved for Explainability / Run Report / Decision Trace. Phase 7 work continues on `phase7-observability` until all Phase 7 sub-phases are complete; do not merge main before Phase 7 is complete.
+
+
+### Phase 7C Explainability / Run Report / Decision Trace
+
+Phase 7C adds an explain-only layer on top of Phase 7A metrics and Phase 7B advisory health diagnosis. It reads existing evidence from Strategy, Strategy Portfolio, Strategy Budget, Decision Snapshot, Offline Replay, Counterfactual, Experiment, Governance, and Observability outputs, then writes `runtime/status/run_explain_report.json`, `runtime/status/daily_observability_report.json`, and `runtime/status/stage7_summary_report.json`.
+
+This phase is report-only. It does not send external notifications, perform automatic remediation, stop or roll back the workflow, change alpha generation, parent selection, mutation policy, reward semantics, CandidatePool state, platform automation, WAIT_RESULT/PARSE_RESULT, SC collection, Governance hard-decision flags, or Strategy budget allocation. It does not execute promotion or rollback and does not treat counterfactual estimates as actual outcomes.
+
+Defaults remain conservative: `enable_run_explainability=false`, `observability_explainability_auto_run=false`, `observability_explainability_mode=explain_only`, and `observability_explanation_auto_action=false`. After Phase 7A/7B/7C are complete, merging to `main` should wait for explicit user instruction.
+
+## Final readonly dashboard / CLI status
+
+Use the final readonly status CLI for a compact synchronized view across
+runtime status JSON, `workflow.db` summary tables, and recent log tails:
+
+```bash
+python tools/show_final_status.py
+python tools/show_final_status.py --json
+python tools/show_final_status.py --verbose --limit 20
+python tools/show_final_status.py --no-db --no-logs
+```
+
+The status reader is fail-open and read-only: missing, stale, corrupt, or locked
+sources become warnings; it does not run collectors, diagnostics, Playwright,
+promotion/rollback, Strategy budget apply, ML training, or workflow actions.
+## Legacy learning state bridge
+
+The legacy official workflow remains the real execution path. `wq_workflow/legacy_bridge/` adds a read-only, fail-open sidecar observer that writes small status files for dashboard, CLI, observability, and later advisory learning:
+
+- `runtime/status/runtime_state.json` for the current workflow snapshot.
+- `runtime/status/recent_events.jsonl` for short recent events.
+- `runtime/status/legacy_learning_evidence.jsonl` for observed legacy evidence.
+
+The bridge does not control legacy execution and does not change reward, CandidatePool behavior, alpha/template generation, platform automation, Governance hard flags, Strategy Budget, promotion, or rollback. Payloads are truncated/redacted and the dashboard/CLI/observability integrations are read-only.
+
+By default, bridge JSONL status streams assume exactly one main-process writer per `runtime/status` directory. Appends are one-record `open("a")` / write / flush operations with optional `fsync` disabled by default, and rotation is only safe under this single-writer contract. Dashboard, CLI, observability, and advisory learning integrations are readers only. If multiple main workflow processes run concurrently, each process must use a different `runtime/status` directory; do not configure multiple main processes to append to the same JSONL files. Readers skip malformed or partial lines instead of interrupting dashboard, CLI, or observability readers.

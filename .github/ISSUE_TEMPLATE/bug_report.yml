@@ -1,0 +1,56 @@
+name: Bug report
+description: Report a reproducible bug without sharing private data.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not upload account credentials, passwords, cookies, API keys, private Alpha results, platform screenshots with sensitive content, runtime databases, logs with sensitive data, or browser state.
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: Briefly describe the problem.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Provide sanitized steps that do not include credentials or private data.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Python version, dependency versions, and sanitized configuration category.
+    validations:
+      required: true
+  - type: checkboxes
+    id: logs_sanitized
+    attributes:
+      label: Logs sanitized confirmation
+      options:
+        - label: I confirm any logs or snippets are sanitized and do not contain credentials, cookies, API keys, private Alpha results, platform-owned data, runtime databases, or sensitive screenshots.
+          required: true
+  - type: checkboxes
+    id: no_secrets
+    attributes:
+      label: No secrets confirmation
+      options:
+        - label: I confirm this issue does not include account credentials, passwords, cookies, API keys, browser storage, private Alpha results, runtime/db files, or sensitive platform screenshots.
+          required: true

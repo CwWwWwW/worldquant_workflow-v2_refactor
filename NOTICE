@@ -1,0 +1,11 @@
+WorldQuant Workflow v2 Refactor
+
+Copyright (c) 2026
+
+This repository contains independent workflow automation and research-assistance code.
+
+This project is not affiliated with, endorsed by, or sponsored by WorldQuant, WorldQuant BRAIN, or any related platform operator.
+
+Third-party dependencies are licensed by their respective owners. See requirements.txt and dependency metadata for details.
+
+No credentials, API keys, cookies, private datasets, proprietary alpha results, or platform-owned data are intended to be included in this repository.
