@@ -13,6 +13,13 @@
 - Simplified README for GitHub landing page clarity.
 - Adjusted CI to enforce compile and release artifact hygiene checks without making existing environment-dependent pytest failures block repository maintenance.
 
+### Fixed
+
+- Isolated pytest configuration from local private config.json.
+- Stabilized StrategyPortfolioService workflow compatibility tests.
+- Stabilized JSONL write visibility in isolated unit tests.
+- Ensured unit tests use temporary storage paths instead of private runtime data.
+
 ### Security
 
 - Documented sensitive-data exclusion policy.

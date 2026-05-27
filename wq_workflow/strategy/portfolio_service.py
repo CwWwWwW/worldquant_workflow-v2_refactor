@@ -58,6 +58,55 @@ class StrategyPortfolioService:
             self._warn("strategy portfolio refresh failed: %s", exc)
             return {"ok": bool(getattr(self.config, "strategy_portfolio_fail_open", True)), "enabled": True, "fail_open": True, "error": str(exc)}
 
+    def select_strategy(self, task_name: str | None = None) -> dict[str, Any]:
+        """Compatibility selection hook for the advisory portfolio service.
+
+        The Phase 6B portfolio service is advisory/report-only. It must not
+        silently replace the legacy production selector, so the compatible
+        workflow hook returns the legacy champion unless a later explicit
+        production promotion path is added.
+        """
+
+        return {
+            "strategy_id": "legacy_champion",
+            "strategy_type": "legacy",
+            "role": "champion",
+            "status": "active",
+            "task_name": task_name or "",
+            "advisory_only": True,
+        }
+
+    def record_strategy_decision(
+        self,
+        strategy: dict[str, Any],
+        workflow_context: dict[str, Any],
+        selected: bool,
+        shadow: bool,
+        score: float | None = None,
+    ) -> None:
+        """Fail-open compatibility hook used by the workflow skeleton."""
+
+        try:
+            repository = getattr(self, "strategy_repository", None)
+            if repository is None or not hasattr(repository, "insert_strategy_decision"):
+                return
+            context = workflow_context if isinstance(workflow_context, dict) else {}
+            strategy_payload = strategy if isinstance(strategy, dict) else {}
+            repository.insert_strategy_decision(
+                {
+                    "strategy_id": strategy_payload.get("strategy_id", "legacy_champion"),
+                    "alpha_id": context.get("alpha_id", ""),
+                    "decision_type": context.get("decision_type", "strategy_selection"),
+                    "selected": bool(selected),
+                    "shadow": bool(shadow),
+                    "score": score,
+                    "model_version": strategy_payload.get("model_version", ""),
+                    "raw_payload": {"strategy": strategy_payload, "workflow_context": context},
+                }
+            )
+        except Exception:
+            return
+
     def get_latest_portfolio(self) -> StrategyPortfolio | None:
         return self.repository.get_latest_portfolio()
 
