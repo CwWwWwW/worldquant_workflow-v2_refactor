@@ -158,6 +158,10 @@ def append_jsonl(path: Path, payload: dict[str, Any], *, max_bytes: int = DEFAUL
 
         manager = get_storage_manager()
         if _is_within_root(path, manager.root) and manager.write_event(path, safe_json_value(payload), max_bytes=max_bytes):
+            try:
+                manager.flush(timeout=1.0)
+            except Exception:
+                logging.info("[Storage] sqlite event flush skipped file=%s", path.name, exc_info=True)
             return
     except Exception:
         logging.info("[Storage] sqlite event write skipped file=%s", path.name, exc_info=True)
