@@ -1,8 +1,8 @@
-# WorldQuant Workflow v2 Refactor
+# AlphaForge
 
 ## Overview
 
-WorldQuant Workflow v2 Refactor is a local automation-assistance workflow for authorized WorldQuant / BRAIN research processes, focused on candidate generation, backtest workflow orchestration, runtime observability, historical memory compatibility, advisory learning, and stable deployment.
+AlphaForge is a local research workflow engine for authorized WorldQuant / BRAIN research assistance, focused on iterative alpha generation, backtest workflow orchestration, runtime observability, memory-compatible refinement, and release-safe automation.
 
 This repository is intended for authorized research workflow assistance only:
 
@@ -12,6 +12,8 @@ This repository is intended for authorized research workflow assistance only:
 - The project is not affiliated with, endorsed by, or sponsored by WorldQuant, WorldQuant BRAIN, or any related platform operator.
 
 Licensed under GPL-3.0-only. See [LICENSE](LICENSE).
+
+The internal Python package remains `wq_workflow` for compatibility. The main entrypoint remains `worldquant_auto_workflow.py`.
 
 ## Current Stable Path
 

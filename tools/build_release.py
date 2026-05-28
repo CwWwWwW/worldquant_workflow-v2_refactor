@@ -6,7 +6,7 @@ import subprocess
 import zipfile
 from pathlib import Path
 
-PROJECT_NAME = "worldquant_workflow-v2_refactor"
+PROJECT_NAME = "alphaforge"
 
 INCLUDE_DIRS = {
     "wq_workflow",

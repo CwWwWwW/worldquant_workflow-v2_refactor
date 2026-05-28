@@ -3,8 +3,8 @@
 ## Recommended Server Setup
 
 ```bash
-git clone https://github.com/CwWwWwW/worldquant_workflow-v2_refactor.git
-cd worldquant_workflow-v2_refactor
+git clone https://github.com/CwWwWwW/alphaforge.git
+cd alphaforge
 python -m venv .venv
 # Linux/macOS:
 . .venv/bin/activate

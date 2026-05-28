@@ -15,7 +15,7 @@ CI intentionally does not run the complete pytest suite yet. Do not treat this a
 
 ## GitHub Releases
 
-Release artifacts are built by `tools/build_release.py` and uploaded from `dist/*.zip`.
+Release artifacts are built by `tools/build_release.py` and uploaded from `dist/*.zip`. The release archive name is `alphaforge-<version>.zip`, and the zip root directory is `alphaforge-<version>/`.
 
 The release workflow only runs for pushed tags matching `v*`. It does not run on normal `main` pushes, does not publish GitHub Packages, and does not build Docker images.
 

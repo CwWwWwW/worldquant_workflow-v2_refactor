@@ -10,6 +10,8 @@
 
 ### Changed
 
+- Renamed public project branding to AlphaForge.
+- Updated release artifact naming to use alphaforge while keeping the internal wq_workflow package name for compatibility.
 - Simplified README for GitHub landing page clarity.
 - Adjusted CI to enforce compile and release artifact hygiene checks without making existing environment-dependent pytest failures block repository maintenance.
 
